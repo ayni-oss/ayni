@@ -1,0 +1,8 @@
+allowOverrideAction: false
+
+require:
+  members: true
+
+allowRemediationCommits:
+  individual: false
+  thirdParty: false
