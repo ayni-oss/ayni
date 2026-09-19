@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-v-in-tag": true,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "ayni",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value == \"ayni-adapters-common\" || @.name.value == \"ayni-adapters-go\" || @.name.value == \"ayni-adapters-kotlin\" || @.name.value == \"ayni-adapters-node\" || @.name.value == \"ayni-adapters-python\" || @.name.value == \"ayni-adapters-rust\" || @.name.value == \"ayni-cli\" || @.name.value == \"ayni-core\" || @.name.value == \"ayni-environment\")].version"
+        }
+      ]
+    }
+  }
+}

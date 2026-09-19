@@ -1,0 +1,375 @@
+use super::util::{
+    command_failure_from_output, format_command, package_manager_for_context, prepare_report_path,
+    run_command_for_context_structured, to_repo_relative_path,
+};
+use ayni_adapters_common::collector::{CollectorError, CollectorResult};
+use ayni_core::{
+    Budget, ComplexityBudget, ComplexityOffender, ComplexityResult, FloatThresholdBudget, Language,
+    Level, Offenders, RunContext, SignalKind, SignalResult, SignalRow, classify_maximum,
+};
+use serde_json::Value;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+pub fn collect(context: &RunContext) -> CollectorResult {
+    let config = context.policy.python.complexity.as_ref().ok_or_else(|| {
+        CollectorError::Adapter(String::from("missing [python.complexity] policy"))
+    })?;
+    let cognitive = config.fn_cognitive.ok_or_else(|| {
+        CollectorError::Adapter(String::from("missing python.complexity.fn_cognitive"))
+    })?;
+
+    let report_path =
+        prepare_report_path(context, "complexipy.json").map_err(CollectorError::Adapter)?;
+    let threshold = cognitive.fail.to_string();
+    let output_path = report_path.to_string_lossy().to_string();
+    let args = vec![
+        complexity_target(context),
+        String::from("--output-format"),
+        String::from("json"),
+        String::from("--output"),
+        output_path,
+        String::from("--max-complexity-allowed"),
+        threshold,
+        String::from("--ignore-complexity"),
+    ];
+    let (program, command_args) = complexity_command(context, &args);
+    let engine = format_command(&program, &command_args);
+    let output = run_command_for_context_structured(context, &program, &command_args)?;
+    if !output.status.success() {
+        return Ok(error_row(
+            context,
+            engine,
+            command_failure_from_output(
+                context,
+                SignalKind::Complexity,
+                &program,
+                &command_args,
+                &output,
+            ),
+        ));
+    }
+
+    let value = read_report(&report_path).map_err(CollectorError::Adapter)?;
+    let mut entries = Vec::new();
+    collect_function_entries(&value, None, &mut entries);
+
+    let mut offenders = Vec::new();
+    let mut measured_functions = 0_u64;
+    let mut max_fn_cognitive = 0.0_f64;
+    let mut warn_count = 0_u64;
+    let mut fail_count = 0_u64;
+
+    for entry in entries {
+        measured_functions += 1;
+        max_fn_cognitive = max_fn_cognitive.max(entry.complexity);
+        let level = classify_complexity(
+            entry.complexity,
+            cognitive.warn,
+            cognitive.fail,
+            &mut warn_count,
+            &mut fail_count,
+        );
+        if let Some(level) = level {
+            offenders.push(ComplexityOffender {
+                file: to_repo_relative_path(
+                    &context.repo_root,
+                    &resolve_file(context, &entry.file),
+                ),
+                line: entry.line.unwrap_or(1),
+                function: entry.function,
+                cyclomatic: 0.0,
+                cognitive: Some(entry.complexity),
+                level,
+            });
+        }
+    }
+
+    offenders.sort_by(|left, right| {
+        right
+            .level
+            .cmp(&left.level)
+            .then_with(|| {
+                right
+                    .cognitive
+                    .unwrap_or(0.0)
+                    .total_cmp(&left.cognitive.unwrap_or(0.0))
+            })
+            .then_with(|| left.file.cmp(&right.file))
+            .then_with(|| left.line.cmp(&right.line))
+    });
+
+    Ok(SignalRow {
+        kind: SignalKind::Complexity,
+        language: Language::Python,
+        scope: context.scope.clone(),
+        pass: fail_count == 0,
+        result: SignalResult::Complexity(ComplexityResult {
+            engine: String::from("complexipy"),
+            failure: None,
+            method: String::from("cognitive"),
+            measured_functions,
+            max_fn_cyclomatic: 0.0,
+            max_fn_cognitive: Some(max_fn_cognitive),
+            warn_count,
+            fail_count,
+        }),
+        budget: Budget::Complexity(ComplexityBudget {
+            fn_cyclomatic: None,
+            fn_cognitive: Some(FloatThresholdBudget {
+                warn: cognitive.warn,
+                fail: cognitive.fail,
+            }),
+        }),
+        offenders: Offenders::Complexity(offenders),
+    })
+}
+
+fn complexity_command(context: &RunContext, args: &[String]) -> (String, Vec<String>) {
+    let manager = package_manager_for_context(context);
+    if manager.executable() == "python" {
+        // Complexipy exposes a console script but no `python -m complexipy`
+        // entrypoint. Environment managers still need their normal `run`
+        // prefix so the project-locked executable is selected.
+        return (String::from("complexipy"), args.to_vec());
+    }
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    manager.run_command("complexipy", &refs)
+}
+
+fn classify_complexity(
+    value: f64,
+    warn: f64,
+    fail: f64,
+    warn_count: &mut u64,
+    fail_count: &mut u64,
+) -> Option<Level> {
+    let level = classify_maximum(value, warn, fail);
+    match level {
+        Some(Level::Warn) => *warn_count += 1,
+        Some(Level::Fail) => *fail_count += 1,
+        None => {}
+    }
+    level
+}
+
+fn error_row(
+    context: &RunContext,
+    engine: String,
+    failure: ayni_core::CommandFailure,
+) -> SignalRow {
+    SignalRow {
+        kind: SignalKind::Complexity,
+        language: Language::Python,
+        scope: context.scope.clone(),
+        pass: false,
+        result: SignalResult::Complexity(ComplexityResult {
+            engine,
+            method: String::from("cognitive"),
+            measured_functions: 0,
+            max_fn_cyclomatic: 0.0,
+            max_fn_cognitive: None,
+            warn_count: 0,
+            fail_count: 1,
+            failure: Some(failure),
+        }),
+        budget: Budget::Complexity(ComplexityBudget::default()),
+        offenders: Offenders::Complexity(Vec::new()),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FunctionEntry {
+    file: String,
+    function: String,
+    line: Option<u64>,
+    complexity: f64,
+}
+
+fn read_report(path: &Path) -> Result<Value, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    serde_json::from_str(&content)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+}
+
+fn collect_function_entries(
+    value: &Value,
+    inherited_file: Option<&str>,
+    out: &mut Vec<FunctionEntry>,
+) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                collect_function_entries(value, inherited_file, out);
+            }
+        }
+        Value::Object(map) => {
+            let file = string_field(value, &["path", "file", "filename"]).or(inherited_file);
+            if let (Some(file), Some(name), Some(complexity)) = (
+                file,
+                string_field(value, &["name", "function", "function_name"]),
+                number_field(value, &["complexity", "cognitive", "score"]),
+            ) {
+                out.push(FunctionEntry {
+                    file: file.to_string(),
+                    function: name.to_string(),
+                    line: number_field(value, &["line_start", "line", "start_line"])
+                        .map(|value| value as u64),
+                    complexity,
+                });
+            }
+            for (key, child) in map {
+                if !child.is_array() && !child.is_object() {
+                    continue;
+                }
+                let child_file = if matches!(key.as_str(), "functions" | "items" | "results") {
+                    file
+                } else {
+                    inherited_file
+                };
+                collect_function_entries(child, child_file, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn string_field<'a>(value: &'a Value, names: &[&str]) -> Option<&'a str> {
+    names
+        .iter()
+        .find_map(|name| value.get(*name).and_then(Value::as_str))
+}
+
+fn number_field(value: &Value, names: &[&str]) -> Option<f64> {
+    names
+        .iter()
+        .find_map(|name| value.get(*name).and_then(Value::as_f64))
+}
+
+fn resolve_file(context: &RunContext, file: &str) -> PathBuf {
+    let path = Path::new(file);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        context.workdir.join(path)
+    }
+}
+
+fn complexity_target(context: &RunContext) -> String {
+    context.scope.file.as_ref().map_or_else(
+        || String::from("."),
+        |file| {
+            ayni_adapters_common::paths::resolve_repo_path(&context.repo_root, file)
+                .to_string_lossy()
+                .into_owned()
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        FunctionEntry, classify_complexity, collect_function_entries, complexity_command,
+        complexity_target,
+    };
+    use ayni_core::{AyniPolicy, ExecutionResolution, Level, RunContext, Scope};
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    #[test]
+    fn extracts_nested_complexipy_functions() {
+        let value = json!([
+            {
+                "path": "src/app.py",
+                "functions": [
+                    {"name": "handle", "complexity": 12, "line_start": 4}
+                ]
+            }
+        ]);
+        let mut out = Vec::<FunctionEntry>::new();
+        collect_function_entries(&value, None, &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].file, "src/app.py");
+        assert_eq!(out[0].function, "handle");
+        assert_eq!(out[0].line, Some(4));
+        assert_eq!(out[0].complexity, 12.0);
+    }
+
+    #[test]
+    fn file_scope_is_the_complexipy_target() {
+        let context = RunContext {
+            repo_root: PathBuf::from("/repo"),
+            target_root: PathBuf::from("/repo"),
+            workdir: PathBuf::from("/repo"),
+            policy: AyniPolicy::default().into(),
+            scope: Scope {
+                file: Some(String::from("src/handler.py")),
+                ..Scope::default()
+            },
+            execution: ExecutionResolution::direct("uv", PathBuf::from("/repo"), "lock", 100),
+            cancellation: Default::default(),
+            debug: false,
+        };
+
+        assert_eq!(complexity_target(&context), "/repo/src/handler.py");
+    }
+
+    #[test]
+    fn complexity_uses_the_resolved_host_package_manager() {
+        let context = RunContext {
+            repo_root: PathBuf::from("/repo"),
+            target_root: PathBuf::from("/repo"),
+            workdir: PathBuf::from("/repo"),
+            policy: AyniPolicy::default().into(),
+            scope: Scope::default(),
+            execution: ExecutionResolution::direct("poetry", PathBuf::from("/repo"), "lock", 100),
+            cancellation: Default::default(),
+            debug: false,
+        };
+        let (program, args) = complexity_command(&context, &[String::from(".")]);
+        assert_eq!(program, "poetry");
+        assert_eq!(args, ["run", "complexipy", "."]);
+    }
+
+    #[test]
+    fn complexity_invokes_the_direct_console_script_for_pip_projects() {
+        let context = RunContext {
+            repo_root: PathBuf::from("/repo"),
+            target_root: PathBuf::from("/repo"),
+            workdir: PathBuf::from("/repo"),
+            policy: AyniPolicy::default().into(),
+            scope: Scope::default(),
+            execution: ExecutionResolution::direct(
+                "python",
+                PathBuf::from("/repo"),
+                "manifest",
+                100,
+            ),
+            cancellation: Default::default(),
+            debug: false,
+        };
+        let (program, args) = complexity_command(&context, &[String::from(".")]);
+        assert_eq!(program, "complexipy");
+        assert_eq!(args, ["."]);
+    }
+
+    #[test]
+    fn maximum_threshold_equality() {
+        let mut warn_count = 0;
+        let mut fail_count = 0;
+        assert_eq!(
+            classify_complexity(9.0, 10.0, 15.0, &mut warn_count, &mut fail_count),
+            None
+        );
+        assert_eq!(
+            classify_complexity(10.0, 10.0, 15.0, &mut warn_count, &mut fail_count),
+            Some(Level::Warn)
+        );
+        assert_eq!(
+            classify_complexity(15.0, 10.0, 15.0, &mut warn_count, &mut fail_count),
+            Some(Level::Fail)
+        );
+        assert_eq!((warn_count, fail_count), (1, 1));
+    }
+}

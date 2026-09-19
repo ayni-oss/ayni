@@ -1,7 +1,11 @@
 # Maintainers
 
-Initial maintainer:
+Current maintainer:
 
-- Gastón Durand Vadas (GitHub: [@gdurandvadas](https://github.com/gdurandvadas))
+- Gastón Durand Vadas — project stewardship, releases, and security response
+  (GitHub: [@gdurandvadas](https://github.com/gdurandvadas); affiliation: not
+  publicly listed)
 
-Maintainer changes are recorded through this repository's normal review process.
+Maintainer appointments and changes follow the lifecycle in
+[GOVERNANCE.md](GOVERNANCE.md). This initial, single-maintainer arrangement is
+not presented as evidence of organizational diversity or CNCF project maturity.

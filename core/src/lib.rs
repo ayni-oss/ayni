@@ -1,0 +1,106 @@
+//! Core contracts for Ayni's unified signal model (foundations / pre-1.0).
+
+pub mod adapter;
+pub mod catalog;
+pub mod comparison;
+pub mod environment;
+pub mod environment_adapter;
+mod environment_lock;
+pub mod environment_preparation;
+mod environment_provisioning;
+pub mod environment_resolution;
+pub mod finding;
+mod hash;
+pub mod impact;
+pub mod impact_result;
+pub mod language;
+pub mod policy;
+pub mod registry;
+pub mod run_outcome;
+pub mod runtime;
+pub mod signal;
+mod signal_validation;
+pub mod threshold;
+pub mod tool_baseline;
+pub mod tooling;
+mod tooling_validation;
+
+pub use adapter::{
+    ComplexityThresholdKind, DetectResult, DiscoveredRoot, LanguageAdapter, LanguageProfile,
+    PolicyEffectivenessFacts, ProjectDiscovery, ProjectLayout, SignalCollector,
+    VerificationSelection, VerificationSelectorSupport,
+};
+pub use catalog::CatalogEntry;
+pub use comparison::{
+    ARTIFACT_COMPARISON_SCHEMA_VERSION, ArtifactComparison, ArtifactComparisonError,
+    FindingIdChanges, MatchedRowComparison, MetricChange, MetricValue, RowChangeSet, SignalRowKey,
+    ValueChange, compare_artifacts,
+};
+pub use environment::{
+    Architecture, DebianPackageRequirement, DependencyLockRequirement, DockerAccess,
+    ENVIRONMENT_PLAN_SCHEMA_VERSION, EnvironmentCapabilities, EnvironmentConflict,
+    EnvironmentContribution, EnvironmentPlan, EnvironmentPlanError, EnvironmentResourceLimits,
+    EnvironmentWarning, Libc, MiseToolRequirement, NetworkAccess, OperatingSystem,
+    PackageManagerRequirement, ProvisioningSupport, RepositoryIdentity, RequirementConfidence,
+    RequirementSource, ResolvedEnvironmentPlan, RuntimeRequirement, SignalToolRequirement,
+    SystemRequirement, SystemRequirementKind, TargetEnvironment, TargetIdentity, TargetPlatform,
+    ToolInstallationScope, VersionRequirement,
+};
+pub use environment_adapter::{EnvironmentCapability, EnvironmentDiscoveryRequest};
+pub use environment_lock::{
+    ENVIRONMENT_LOCK_RECIPE_VERSION, ENVIRONMENT_LOCK_SCHEMA_VERSION, EnvironmentLock,
+    LockedDebianPackage, LockedDependencyLock, LockedMiseTool, LockedPackageManager,
+    LockedRepositoryIdentity, LockedRequirementSource, LockedRuntime, LockedSignalTool,
+    LockedTargetEnvironment, ProvisioningBase,
+};
+pub use environment_preparation::{
+    DependencyPreparationCapability, DependencyPreparationPlan, DependencyPreparationRequest,
+    PreparationCommand, PreparationInput, PreparationOutput, PreparationOutputMode,
+    PreparationScaffold,
+};
+pub use environment_resolution::{EnvironmentResolutionCapability, EnvironmentResolutionRequest};
+pub use hash::{lower_hex, sha256_fingerprint, sha256_hex};
+pub use impact::{
+    ChangeKind, ChangedPath, ImpactCapability, ImpactConfidence, ImpactContribution, ImpactError,
+    ImpactIdentity, ImpactIdentityKind, ImpactPlan, ImpactReason, ImpactReasonKind, ImpactRequest,
+    ImpactUncertainty, ImpactUncertaintyKind, SelectedCheck,
+};
+pub use impact_result::{
+    IMPACT_SCHEMA_VERSION, ImpactAggregate, ImpactArtifact, ImpactExecution, ImpactExecutionIssue,
+    ImpactExecutionState, RepositoryCompletionMarker,
+};
+pub use language::Language;
+pub use policy::{
+    AYNI_POLICY_FILE, AyniPolicy, ComplexityPolicy, ConcurrencyPolicy, CoveragePolicy, DepsPolicy,
+    ExecutionPolicy, LanguageSelection, LanguageTooling, LanguageToolingOverrides, PolicyChecks,
+    PolicyEffectivenessWarning, ReportPolicy, SizeThreshold, ThresholdFloat, ThresholdInt,
+    ToolCommandOverride,
+};
+pub use registry::AdapterRegistry;
+pub use run_outcome::RunOutcome;
+pub use runtime::{
+    AdapterError, AdapterErrorKind, CancellationToken, ExecutionResolution, RunContext, Scope,
+};
+pub use signal::{
+    AYNI_SIGNAL_SCHEMA_VERSION, AggregateStatus, AggregateSummary, AppliedThreshold,
+    ArtifactToolVersion, Budget, CommandFailure, CompletionIssue, CompletionScope, CompletionStage,
+    CompletionState, ComplexityBudget, ComplexityOffender, ComplexityResult, CoverageBudget,
+    CoverageOffender, CoverageResult, DepsBudget, DepsOffender, DepsResult, ExecutionMode,
+    FailureSummary, Finding, FindingError, FindingMetadata, Findings, FloatThresholdBudget,
+    InvocationContext, Level, MutationBudget, MutationOffender, MutationResult, OffenderIdentity,
+    OffenderSummary, Offenders, OutputContext, RunArtifact, RunArtifactMetadata, RunCompletion,
+    SignalKind, SignalResult, SignalRow, SizeBudget, SizeBudgetRule, SizeOffender, SizeResult,
+    TestBudget, TestFailure, TestResult, VerificationMetadata, VerificationTarget,
+};
+pub use threshold::{
+    ConfiguredMetricEvaluation, classify_maximum, classify_minimum, evaluate_configured_metric,
+};
+
+pub use tooling::{
+    ToolVersionAuthority, ToolingConflict, ToolingDiagnostic, ToolingPlan,
+    ToolingReconciliationCapability, ToolingRequest, ToolingRequirement, ToolingWarning,
+};
+
+pub use tool_baseline::{
+    ManagedToolSpec, ToolBaseline, ToolIntegration, select_managed_tools, validate_managed_tools,
+};
