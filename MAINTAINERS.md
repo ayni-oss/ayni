@@ -1,4 +1,7 @@
 # Maintainers
 
-Project maintainers are designated by the organization owners. Maintainer
-changes are recorded through this repository's normal review process.
+Initial maintainer:
+
+- Gastón Durand Vadas (GitHub: [@gdurandvadas](https://github.com/gdurandvadas))
+
+Maintainer changes are recorded through this repository's normal review process.
