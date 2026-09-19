@@ -2,7 +2,7 @@
 
 set -eu
 
-REPO="${REPO:-gdurandvadas/ayni}"
+REPO="${REPO:-ayni-oss/ayni}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${VERSION:-}"
 BIN_NAME="ayni"

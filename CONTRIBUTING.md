@@ -2,6 +2,13 @@
 
 Thanks for helping improve Ayni.
 
+## Code of conduct and governance
+
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md),
+[Community guide](COMMUNITY.md), and [Governance](GOVERNANCE.md). Use public
+issues and pull requests for ordinary project work; follow
+[SECURITY.md](SECURITY.md) for vulnerabilities.
+
 ## Scope
 
 The open-source CLI supports:
@@ -68,7 +75,7 @@ VitePress builds successfully as part of the event-driven `ayni-status` gate.
 Pushes to `main` additionally deploy the uploaded `docs/.vitepress/dist` artifact
 to GitHub Pages; source documentation remains under `docs/`.
 
-The GitHub Pages custom-domain configuration preserves the intended `ayni.gedv.me` domain.
+Documentation is deployed only when the organization configures GitHub Pages for this repository.
 
 For language adapter implementation guidance, see
 [`docs/contributing/adapters.md`](docs/contributing/adapters.md).
@@ -94,6 +101,19 @@ For language adapter implementation guidance, see
 - README or docs updated if behavior changed.
 - `ayni agents sync` is idempotent and preserves user content outside Ayni's marked block.
 - `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo check` pass.
+
+## Developer Certificate of Origin and signatures
+
+Every contribution, including maintainer contributions, must carry a Developer
+Certificate of Origin sign-off:
+
+```sh
+git commit -s
+```
+
+Maintainers also cryptographically sign commits. A DCO sign-off and a
+cryptographic signature serve different purposes; both are required for
+maintainer changes.
 
 ## Licensing
 

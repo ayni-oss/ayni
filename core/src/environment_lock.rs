@@ -782,7 +782,7 @@ mod tests {
 
     fn base() -> ProvisioningBase {
         ProvisioningBase {
-            reference: "ghcr.io/gdurandvadas/ayni-env:0.8.1-debian".to_owned(),
+            reference: "ghcr.io/ayni-oss/ayni-env:0.8.1-debian".to_owned(),
             digest: digest('b'),
             variant: "debian".to_owned(),
             mise_version: "2025.2.4".to_owned(),

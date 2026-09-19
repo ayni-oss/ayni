@@ -17,7 +17,7 @@ hero:
       link: /getting-started/how-ayni-works
     - theme: alt
       text: View on GitHub
-      link: https://github.com/gdurandvadas/ayni
+      link: https://github.com/ayni-oss/ayni
 
 features:
   - title: One quality contract

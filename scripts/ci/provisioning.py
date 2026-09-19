@@ -9,7 +9,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
-REPOSITORY = "ghcr.io/gdurandvadas/ayni-provisioning"
+REPOSITORY = "ghcr.io/ayni-oss/ayni-provisioning"
 
 
 def recipe_digest(root=ROOT):

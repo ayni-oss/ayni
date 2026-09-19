@@ -46,7 +46,7 @@ ENV HOME=/home/ayni \
 
 LABEL org.opencontainers.image.title="Ayni provisioning substrate" \
       org.opencontainers.image.description="Language-neutral substrate; Ayni assembles repository tools and its executor separately" \
-      org.opencontainers.image.source="https://github.com/gdurandvadas/ayni" \
+      org.opencontainers.image.source="https://github.com/ayni-oss/ayni" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.licenses="Apache-2.0" \
       dev.ayni.provisioning.schema="1" \

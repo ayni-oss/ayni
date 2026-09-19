@@ -11,7 +11,7 @@ ARG MISE_SHA256_ARM64
 
 LABEL org.opencontainers.image.title="Ayni code environment" \
       org.opencontainers.image.description="Universal Debian base for Ayni-managed development and analysis environments" \
-      org.opencontainers.image.source="https://github.com/gdurandvadas/ayni" \
+      org.opencontainers.image.source="https://github.com/ayni-oss/ayni" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.version="${AYNI_VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0" \

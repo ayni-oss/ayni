@@ -238,7 +238,7 @@ pub(crate) fn resolve(
         Some(image) => crate::lock::parse_exact_base(image)?,
         None => {
             let reference = format!(
-                "ghcr.io/gdurandvadas/ayni-env:{}-debian",
+                "ghcr.io/ayni-oss/ayni-env:{}-debian",
                 env!("CARGO_PKG_VERSION")
             );
             let digest = crate::lock::inspect_remote_digest(&reference)?;

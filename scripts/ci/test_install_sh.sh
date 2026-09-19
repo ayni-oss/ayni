@@ -22,7 +22,7 @@ wget_bin="$tmp_dir/wget-bin"
 make_path "$wget_bin"
 cat > "$wget_bin/wget" <<'EOF'
 #!/bin/sh
-echo '  Location: https://github.com/gdurandvadas/ayni/releases/tag/ayni-v1.2.3' >&2
+echo '  Location: https://github.com/ayni-oss/ayni/releases/tag/ayni-v1.2.3' >&2
 exit 8
 EOF
 chmod +x "$wget_bin/wget"

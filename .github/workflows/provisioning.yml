@@ -89,7 +89,7 @@ jobs:
           context: ${{ runner.temp }}/provisioning
           file: ${{ runner.temp }}/provisioning/ayni-provisioning.Dockerfile
           platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=ghcr.io/gdurandvadas/ayni-provisioning,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/ayni-oss/ayni-provisioning,push-by-digest=true,name-canonical=true,push=true
           sbom: true
           provenance: mode=max
           build-args: |
@@ -101,7 +101,7 @@ jobs:
             RECIPE_DIGEST=${{ needs.source.outputs.recipe }}
       - name: Verify native substrate contract
         env:
-          IMAGE: ghcr.io/gdurandvadas/ayni-provisioning@${{ steps.image.outputs.digest }}
+          IMAGE: ghcr.io/ayni-oss/ayni-provisioning@${{ steps.image.outputs.digest }}
           EXPECTED_UNAME: ${{ matrix.uname }}
           EXPECTED_COMMIT: ${{ needs.source.outputs.commit }}
           EXPECTED_RECIPE: ${{ needs.source.outputs.recipe }}
@@ -119,7 +119,7 @@ jobs:
         env:
           TRIVY_PLATFORM: linux/${{ matrix.arch }}
         with:
-          image-ref: ghcr.io/gdurandvadas/ayni-provisioning@${{ steps.image.outputs.digest }}
+          image-ref: ghcr.io/ayni-oss/ayni-provisioning@${{ steps.image.outputs.digest }}
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -177,7 +177,7 @@ jobs:
           RECIPE: ${{ needs.source.outputs.recipe }}
         run: |
           set -euo pipefail
-          repository=ghcr.io/gdurandvadas/ayni-provisioning
+          repository=ghcr.io/ayni-oss/ayni-provisioning
           sources=()
           for arch in amd64 arm64; do
             digest="$(cat "$RUNNER_TEMP/digests/$arch")"
@@ -192,7 +192,7 @@ jobs:
           docker buildx imagetools inspect "$immutable" --raw > "$RUNNER_TEMP/manifest.json"
           python3 scripts/ci/provisioning.py manifest "$RUNNER_TEMP/manifest.json"
           cosign sign --yes "$immutable"
-          cosign verify --certificate-identity 'https://github.com/gdurandvadas/ayni/.github/workflows/provisioning.yml@refs/heads/main' --certificate-oidc-issuer https://token.actions.githubusercontent.com "$immutable"
+          cosign verify --certificate-identity 'https://github.com/ayni-oss/ayni/.github/workflows/provisioning.yml@refs/heads/main' --certificate-oidc-issuer https://token.actions.githubusercontent.com "$immutable"
           docker buildx imagetools create --tag "$repository:recipe-${RECIPE#sha256:}" "$immutable"
           printf '%s\n' "$immutable" > "$RUNNER_TEMP/provisioning-reference.txt"
           echo "reference=$immutable" >> "$GITHUB_OUTPUT"

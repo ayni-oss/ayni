@@ -154,9 +154,9 @@ both the GitHub workflow identity and OIDC issuer; for a released digest:
 
 ```sh
 cosign verify \
-  --certificate-identity 'https://github.com/gdurandvadas/ayni/.github/workflows/release.yml@refs/heads/main' \
+  --certificate-identity 'https://github.com/ayni-oss/ayni/.github/workflows/release.yml@refs/heads/main' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  'ghcr.io/gdurandvadas/ayni-env@sha256:<release-digest>'
+  'ghcr.io/ayni-oss/ayni-env@sha256:<release-digest>'
 ```
 
 The workflow pushes architecture images by digest without persistent
@@ -240,4 +240,4 @@ exhaustion attacks, compromised dependencies, malicious diagnostics, or
 capabilities explicitly granted by the operator.
 
 To report an unexpected boundary violation, follow the repository's
-[security policy](https://github.com/gdurandvadas/ayni/security/policy).
+[security policy](https://github.com/ayni-oss/ayni/security/policy).

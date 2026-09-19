@@ -259,7 +259,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           sbom: true
           provenance: mode=max
-          outputs: type=image,name=ghcr.io/gdurandvadas/ayni-env,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/ayni-oss/ayni-env,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,version=2,scope=release-executor-${{ matrix.arch }}
           cache-to: type=gha,version=2,scope=release-executor-${{ matrix.arch }},mode=max
           build-args: |
@@ -279,7 +279,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          image="ghcr.io/gdurandvadas/ayni-env@${IMAGE_DIGEST}"
+          image="ghcr.io/ayni-oss/ayni-env@${IMAGE_DIGEST}"
           docker pull --platform "$PLATFORM" "$image"
           revision="$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
           version="$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
@@ -313,7 +313,7 @@ jobs:
         env:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
-          image-ref: ghcr.io/gdurandvadas/ayni-env@${{ steps.build-image.outputs.digest }}
+          image-ref: ghcr.io/ayni-oss/ayni-env@${{ steps.build-image.outputs.digest }}
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -378,7 +378,7 @@ jobs:
           DIGEST_DIRECTORY: ${{ runner.temp }}/environment-image-digests
         run: |
           set -euo pipefail
-          repository="ghcr.io/gdurandvadas/ayni-env"
+          repository="ghcr.io/ayni-oss/ayni-env"
           staging="${repository}:${VERSION}-debian-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mapfile -t digest_files < <(find "$DIGEST_DIRECTORY" -maxdepth 1 -type f -print | sort)
           test "${#digest_files[@]}" -eq 2
@@ -426,7 +426,7 @@ jobs:
           digest="$(printf '%s\n' "$inspection" | sed -n 's/^Digest:[[:space:]]*//p' | head -n1)"
           test "$digest" = "$SIGNED_DIGEST"
           cosign verify \
-            --certificate-identity 'https://github.com/gdurandvadas/ayni/.github/workflows/release-publication.yml@refs/heads/main' \
+            --certificate-identity 'https://github.com/ayni-oss/ayni/.github/workflows/release-publication.yml@refs/heads/main' \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
             "${REPOSITORY}@${digest}"
           echo "base=${image}@${digest}" >> "$GITHUB_OUTPUT"

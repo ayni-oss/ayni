@@ -37,45 +37,18 @@ repair targets.
 
 ## Install
 
-### macOS and Linux
-
-Install the latest published release:
-
-```sh
-curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/gdurandvadas/ayni/main/install.sh | sh
-```
-
-The installer detects the current platform, installs `ayni` into
-`~/.local/bin` by default, and requires `sha256sum` or `shasum` to verify the
-release checksum before installation. A piped install is non-interactive and
-prints the required `PATH` line when needed; download
-and run `install.sh` directly if you want its interactive prompts.
-
-Pin a specific release:
-
-```sh
-curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/gdurandvadas/ayni/main/install.sh | VERSION=ayni-v0.10.0 sh
-```
-
-Choose a custom install directory:
-
-```sh
-curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/gdurandvadas/ayni/main/install.sh | INSTALL_DIR="$HOME/bin" sh
-```
-
-For supported targets, direct release downloads, checksum verification,
-upgrades, and uninstall instructions, see the [installation guide](docs/getting-started/installation.md).
-
 ### From source
 
-Build and install directly from this repository:
+The `ayni-oss` project has not published its first release yet. Build from this
+repository:
 
 ```sh
 cargo install --locked --path cli
 ```
+
+After the first release, the verified installer and supported platform archives
+will be documented in the [installation guide](docs/getting-started/installation.md).
+
 
 ## Quick Start
 

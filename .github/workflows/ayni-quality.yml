@@ -101,7 +101,13 @@ jobs:
           diff --unified docs/cli.md "$RUNNER_TEMP/cli.md"
 
       - name: Audit locked npm dependencies
-        run: npm audit --audit-level=high
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            npm audit --audit-level=high && exit 0
+            test "$attempt" = 3 && exit 1
+            sleep 10
+          done
 
       - name: Build VitePress
         env:

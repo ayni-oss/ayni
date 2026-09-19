@@ -3,7 +3,7 @@ ARG DEBIAN_IMAGE
 FROM ${DEBIAN_IMAGE}
 ARG AYNI_VERSION
 ARG SOURCE_REVISION
-LABEL org.opencontainers.image.source="https://github.com/gdurandvadas/ayni" \
+LABEL org.opencontainers.image.source="https://github.com/ayni-oss/ayni" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.version="${AYNI_VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0" \

@@ -33,7 +33,7 @@ def summarize(run: dict, jobs: list[dict], cache_state: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_id", type=int)
-    parser.add_argument("--repository", default="gdurandvadas/ayni")
+    parser.add_argument("--repository", default="ayni-oss/ayni")
     parser.add_argument("--cache-state", required=True,
                         help="Observed cache conditions; explicitly identify uncontrolled caches")
     args = parser.parse_args()

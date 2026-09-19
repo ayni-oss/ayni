@@ -1189,7 +1189,7 @@ fn assert_executor_build_contract(root: &TempDir) {
     fs::write(&path, original_bytes).unwrap();
 
     let replacement = format!(
-        "ghcr.io/gdurandvadas/ayni-env:checkout@sha256:{}",
+        "ghcr.io/ayni-oss/ayni-env:checkout@sha256:{}",
         "c".repeat(64)
     );
     let built = command(root, &["env", "build", "--repo-root"])

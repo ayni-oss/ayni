@@ -87,7 +87,7 @@ export default withMermaid(defineConfig({
       },
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/gdurandvadas/ayni' },
+      { icon: 'github', link: 'https://github.com/ayni-oss/ayni' },
     ],
     search: {
       provider: 'local',

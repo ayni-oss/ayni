@@ -2,20 +2,26 @@
 
 Install the Ayni CLI first. Managed environments are provisioned separately for each repository from its committed environment lock.
 
-## Install the latest release
+## Current status
+
+`ayni-oss/ayni` has not published its first release yet. Build from source for
+now. The release instructions below describe the verified installation contract
+that applies once the project publishes a release.
+
+## Install a published release
 
 The installer detects your operating system and architecture, downloads the matching release archive and `SHA256SUMS`, requires `sha256sum` or `shasum` to verify the archive, validates the archive layout, and installs `ayni` into `~/.local/bin`.
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/gdurandvadas/ayni/main/install.sh | sh
+  https://raw.githubusercontent.com/ayni-oss/ayni/main/install.sh | sh
 ```
 
 Review the installer before running it if that is your normal security practice. Running the downloaded script directly also enables its optional interactive install-directory and `PATH` prompts:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSLO \
-  https://raw.githubusercontent.com/gdurandvadas/ayni/main/install.sh
+  https://raw.githubusercontent.com/ayni-oss/ayni/main/install.sh
 less install.sh
 sh install.sh
 ```
@@ -44,7 +50,7 @@ Both variables also work with the piped installer:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/gdurandvadas/ayni/main/install.sh |
+  https://raw.githubusercontent.com/ayni-oss/ayni/main/install.sh |
   VERSION=ayni-v0.10.0 INSTALL_DIR="$HOME/bin" sh
 ```
 
@@ -61,7 +67,7 @@ Windows and Linux distributions without glibc do not currently have prebuilt rel
 
 ## Download a release manually
 
-Release archives and checksums are published on the [GitHub Releases page](https://github.com/gdurandvadas/ayni/releases). A complete release contains one archive for each of the four supported targets plus `SHA256SUMS`; release automation fails if that public inventory or any installer smoke test is incomplete. Archive names include the complete release tag and follow this pattern:
+Release archives and checksums are published on the [GitHub Releases page](https://github.com/ayni-oss/ayni/releases). A complete release contains one archive for each of the four supported targets plus `SHA256SUMS`; release automation fails if that public inventory or any installer smoke test is incomplete. Archive names include the complete release tag and follow this pattern:
 
 ```text
 ayni-<release-tag>-<target>.tar.gz
@@ -76,7 +82,7 @@ For example, select a version and target, then download both the archive and che
 VERSION=ayni-v0.10.0
 TARGET=aarch64-apple-darwin
 ARCHIVE="ayni-${VERSION}-${TARGET}.tar.gz"
-BASE_URL="https://github.com/gdurandvadas/ayni/releases/download/${VERSION}"
+BASE_URL="https://github.com/ayni-oss/ayni/releases/download/${VERSION}"
 
 curl --proto '=https' --tlsv1.2 -fsSLO "${BASE_URL}/${ARCHIVE}"
 curl --proto '=https' --tlsv1.2 -fsSLO "${BASE_URL}/SHA256SUMS"
@@ -103,7 +109,7 @@ install -m 0755 "ayni-${VERSION}-${TARGET}/ayni" "$HOME/.local/bin/ayni"
 Building requires Git and the Rust toolchain version declared by the repository:
 
 ```sh
-git clone https://github.com/gdurandvadas/ayni.git
+git clone https://github.com/ayni-oss/ayni.git
 cd ayni
 cargo install --locked --path cli
 ```
@@ -142,7 +148,7 @@ Run the installer again to replace the existing binary with the latest release:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/gdurandvadas/ayni/main/install.sh | sh
+  https://raw.githubusercontent.com/ayni-oss/ayni/main/install.sh | sh
 ```
 
 Use `VERSION=<release-tag>` to upgrade to a specific version or roll back. After changing Ayni or repository runtime inputs, run `ayni env doctor`; regenerate and commit `.ayni.lock` when it reports stale state.

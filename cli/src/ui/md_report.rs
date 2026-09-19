@@ -9,11 +9,11 @@ use crate::ui::report_view::{
 };
 
 const PASS_IMAGE_URL: &str =
-    "https://raw.githubusercontent.com/gdurandvadas/ayni/refs/heads/main/assets/pass.svg";
+    "https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/pass.svg";
 const WARN_IMAGE_URL: &str =
-    "https://raw.githubusercontent.com/gdurandvadas/ayni/refs/heads/main/assets/warn.svg";
+    "https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/warn.svg";
 const FAIL_IMAGE_URL: &str =
-    "https://raw.githubusercontent.com/gdurandvadas/ayni/refs/heads/main/assets/fail.svg";
+    "https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/fail.svg";
 
 fn push_heading(out: &mut String, scope: CompletionScope) {
     match scope {
@@ -365,7 +365,7 @@ mod tests {
         assert!(text.contains("## rust (workspace)"));
         assert!(text.contains("| # | Signal | Summary | Status |"));
         assert!(text.contains(
-            r#"| **1** | **coverage** | `percent=41.0% status=ok` | <img src="https://raw.githubusercontent.com/gdurandvadas/ayni/refs/heads/main/assets/fail.svg" alt="fail" width="20" height="20"> fail |"#
+            r#"| **1** | **coverage** | `percent=41.0% status=ok` | <img src="https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/fail.svg" alt="fail" width="20" height="20"> fail |"#
         ));
         assert!(text.contains("<details>\n<summary>Offenders</summary>\n\n"));
         assert!(text.contains("\ncoverage\n- "));
