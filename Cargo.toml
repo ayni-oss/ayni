@@ -1,0 +1,26 @@
+[workspace]
+members = [
+  "core",
+  "adapters/common",
+  "adapters/go",
+  "adapters/kotlin",
+  "adapters/rust",
+  "adapters/node",
+  "adapters/python",
+  "environment",
+  "cli",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.93"
+version = "0.12.0"
+authors = ["Gastón Durand Vadas"]
+description = "Open-source code quality signals for AI agents"
+license = "AGPL-3.0-only"
+repository = "https://github.com/gdurandvadas/ayni"
+homepage = "https://github.com/gdurandvadas/ayni"
+
+[workspace.dependencies]
+toml = "1.1"

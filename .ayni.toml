@@ -1,0 +1,62 @@
+[checks]
+test = true
+coverage = true
+size = true
+complexity = true
+deps = true
+mutation = false
+
+[languages]
+enabled = ["rust"]
+
+[concurrency]
+amount = 1
+
+[environment.resources]
+cpus = 4
+memory_mib = 8192
+memory_swap_mib = 8192
+pids = 2048
+nofile = 8192
+
+[rust]
+roots = [
+  ".",
+]
+
+[rust.tooling]
+coverage_satisfies_test = true
+
+# Optional tool override examples:
+# [rust.tooling.test]
+# command = "cargo"
+# args = ["test"]
+#
+# [rust.tooling.coverage]
+# command = "cargo"
+# args = ["llvm-cov", "--workspace", "--json", "--summary-only"]
+#
+# [rust.tooling.mutation]
+# command = "cargo"
+# args = ["mutants", "--list"]
+
+[rust.size]
+"*.rs" = { warn = 1000, fail = 1600, exclude = ["target/**", ".ayni/**"] }
+
+[rust.complexity]
+fn_cyclomatic = { warn = 10, fail = 15 }
+fn_cognitive   = { warn = 20, fail = 29 }
+
+[rust.coverage]
+line_percent = { warn = 80, fail = 77 }
+
+[rust.deps.forbidden]
+"core"            = ["adapters/*", "environment", "cli"]
+"adapters/*"      = ["environment", "cli"]
+"adapters/common" = ["adapters/go", "adapters/kotlin", "adapters/node", "adapters/python", "adapters/rust"]
+"adapters/go"     = ["adapters/kotlin", "adapters/node", "adapters/python", "adapters/rust"]
+"adapters/kotlin" = ["adapters/go", "adapters/node", "adapters/python", "adapters/rust"]
+"adapters/node"   = ["adapters/go", "adapters/kotlin", "adapters/python", "adapters/rust"]
+"adapters/python" = ["adapters/go", "adapters/kotlin", "adapters/node", "adapters/rust"]
+"adapters/rust"   = ["adapters/go", "adapters/kotlin", "adapters/node", "adapters/python"]
+"environment"     = ["adapters/go", "adapters/kotlin", "adapters/node", "adapters/python", "adapters/rust", "cli"]

@@ -1,0 +1,161 @@
+name: ayni-status
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  coordinate:
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.plan.outputs.platforms }}
+      fixtures: ${{ steps.plan.outputs.fixtures }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Declare required work
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/ci/coordinate.py plan --plan "$RUNNER_TEMP/required-work/plan.json" --source "$GITHUB_SHA" --base "$BASE_SHA"
+      - name: Publish required job inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: required-work
+          path: ${{ runner.temp }}/required-work/plan.json
+          retention-days: 14
+          if-no-files-found: error
+
+  candidate:
+    name: build candidate (${{ matrix.arch }})
+    needs: coordinate
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.coordinate.outputs.platforms) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Cache unprivileged candidate compilation
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .ayni/ci-cargo
+            .ayni/ci-target
+          key: pr-candidate-${{ matrix.arch }}-${{ hashFiles('.github/docker/ayni-env.versions', 'Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            pr-candidate-${{ matrix.arch }}-${{ hashFiles('.github/docker/ayni-env.versions', 'Cargo.lock') }}-
+      - name: Build one Bookworm candidate
+        env:
+          PLATFORM: linux/${{ matrix.arch }}
+        run: python3 scripts/ci/timed.py --output "$RUNNER_TEMP/candidate/timings.jsonl" --stage candidate-build -- bash scripts/ci/build-candidate.sh "$RUNNER_TEMP/candidate" "$PLATFORM"
+      - name: Export candidate and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-${{ matrix.arch }}
+          path: ${{ runner.temp }}/candidate/
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+  lock-consistency:
+    name: managed lock consistency (${{ matrix.arch }})
+    needs: [coordinate, candidate]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.coordinate.outputs.platforms) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Import verified candidate
+        id: candidate
+        uses: ./.github/actions/use-candidate
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Install pinned Mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.6.14
+          install: false
+          cache: false
+      - name: Verify complete committed lock twice
+        env:
+          AYNI: ${{ steps.candidate.outputs.cli }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/managed-lock-$ARCH"
+          mkdir -p "$evidence"
+          cp .ayni.lock "$evidence/committed.json"
+          base="$(jq --raw-output '.provisioning_base.reference + "@" + .provisioning_base.digest' .ayni.lock)"
+          "$AYNI" env lock --config ./.ayni.toml --base "$base"
+          cp .ayni.lock "$evidence/generated.json"
+          "$AYNI" env lock --config ./.ayni.toml --base "$base"
+          cp .ayni.lock "$evidence/regenerated.json"
+          cmp "$evidence/committed.json" "$evidence/generated.json"
+          cmp "$evidence/generated.json" "$evidence/regenerated.json"
+      - name: Retain complete lock evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: managed-lock-${{ matrix.arch }}
+          path: ${{ runner.temp }}/managed-lock-${{ matrix.arch }}/
+          retention-days: 14
+          if-no-files-found: error
+
+  repository:
+    needs: [coordinate, candidate]
+    uses: ./.github/workflows/ayni-repository.yml
+    with:
+      platforms: ${{ needs.coordinate.outputs.platforms }}
+
+  fixtures:
+    needs: [coordinate, candidate]
+    uses: ./.github/workflows/ayni-fixtures.yml
+    with:
+      fixtures: ${{ needs.coordinate.outputs.fixtures }}
+
+  quality:
+    uses: ./.github/workflows/ayni-quality.yml
+
+  status:
+    name: status
+    if: ${{ always() }}
+    needs: [coordinate, candidate, lock-consistency, repository, fixtures, quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Download required work inventory
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: required-work
+          path: ${{ runner.temp }}/required-work
+      - name: Download managed evidence from this run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: managed-*
+          path: ${{ runner.temp }}/evidence
+      - name: Require every job and evidence artifact
+        if: always()
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/coordinate.py complete --plan "$RUNNER_TEMP/required-work/plan.json" --source "$GITHUB_SHA" --base "$BASE_SHA" --evidence "$RUNNER_TEMP/evidence"

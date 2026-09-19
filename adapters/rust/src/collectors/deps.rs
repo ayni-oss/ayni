@@ -1,0 +1,502 @@
+use ayni_adapters_common::collector::{CollectorError, CollectorResult};
+use ayni_adapters_common::deps::{compile_rules, matching_offenders};
+use ayni_adapters_common::exec::run_command_for_context_structured;
+use ayni_core::{
+    Budget, DepsBudget, DepsOffender, DepsResult, Language, Offenders, RunContext, Scope,
+    SignalKind, SignalResult, SignalRow,
+};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+
+pub fn collect(context: &RunContext) -> CollectorResult {
+    let rules = context
+        .policy
+        .rust
+        .deps
+        .as_ref()
+        .map(|value| value.forbidden.clone())
+        .unwrap_or_default();
+
+    let metadata = load_metadata(context)?;
+    let analysis = analyze_deps(
+        &metadata,
+        &context.repo_root,
+        &context.scope,
+        &context.target_root,
+        &rules,
+    )
+    .map_err(CollectorError::Adapter)?;
+
+    Ok(SignalRow {
+        kind: SignalKind::Deps,
+        language: Language::Rust,
+        scope: context.scope.clone(),
+        pass: analysis.result.violation_count == 0,
+        result: SignalResult::Deps(analysis.result),
+        budget: Budget::Deps(DepsBudget {
+            forbidden: Some(rules),
+        }),
+        offenders: Offenders::Deps(analysis.offenders),
+    })
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CargoMetadata {
+    packages: Vec<MetadataPackage>,
+    workspace_members: Vec<String>,
+    resolve: Option<MetadataResolve>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct MetadataPackage {
+    id: String,
+    name: String,
+    manifest_path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct MetadataResolve {
+    nodes: Vec<MetadataNode>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct MetadataNode {
+    id: String,
+    deps: Vec<MetadataDep>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct MetadataDep {
+    pkg: String,
+}
+
+#[derive(Debug, Clone)]
+struct MemberInfo {
+    id: String,
+    name: String,
+    dir: String,
+    dir_abs: PathBuf,
+}
+
+struct DepsAnalysis {
+    result: DepsResult,
+    offenders: Vec<DepsOffender>,
+}
+
+struct MemberGraph {
+    crate_count: u64,
+    edges: BTreeSet<(String, String)>,
+}
+
+fn load_metadata(context: &RunContext) -> Result<CargoMetadata, CollectorError> {
+    let args = vec![
+        String::from("metadata"),
+        String::from("--format-version"),
+        String::from("1"),
+    ];
+    let output = run_command_for_context_structured(context, "cargo", &args)?;
+    if !output.status.success() {
+        return Err(CollectorError::Adapter(format!(
+            "cargo metadata failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    serde_json::from_slice(&output.stdout).map_err(|error| {
+        CollectorError::Adapter(format!("failed to parse cargo metadata output: {error}"))
+    })
+}
+
+fn analyze_deps(
+    metadata: &CargoMetadata,
+    repo_root: &Path,
+    scope: &Scope,
+    workdir: &Path,
+    forbidden: &BTreeMap<String, Vec<String>>,
+) -> Result<DepsAnalysis, String> {
+    let graph = scoped_member_graph(metadata, repo_root, scope, workdir)?;
+    let compiled_rules = compile_rules(forbidden)?;
+    let offenders = matching_offenders(&graph.edges, &compiled_rules);
+
+    Ok(DepsAnalysis {
+        result: DepsResult {
+            crate_count: graph.crate_count,
+            edge_count: graph.edges.len() as u64,
+            violation_count: offenders.len() as u64,
+            failure: None,
+        },
+        offenders,
+    })
+}
+
+fn scoped_member_graph(
+    metadata: &CargoMetadata,
+    repo_root: &Path,
+    scope: &Scope,
+    workdir: &Path,
+) -> Result<MemberGraph, String> {
+    let canonical_repo_root = repo_root.canonicalize().map_err(|error| {
+        format!(
+            "failed to canonicalize repo root {}: {error}",
+            repo_root.display()
+        )
+    })?;
+    let members = workspace_members(metadata, &canonical_repo_root)?;
+    let visible_members = visible_members(&members, scope, &canonical_repo_root)?;
+    let canonical_workdir = workdir.canonicalize().map_err(|error| {
+        format!(
+            "failed to canonicalize workdir {}: {error}",
+            workdir.display()
+        )
+    })?;
+    let members_in_root: Vec<&MemberInfo> = members
+        .iter()
+        .filter(|member| {
+            member.dir_abs == canonical_workdir || member.dir_abs.starts_with(&canonical_workdir)
+        })
+        .collect();
+    let root_member_ids: BTreeSet<&str> = members_in_root
+        .iter()
+        .map(|member| member.id.as_str())
+        .collect();
+    let visible_members: Vec<&MemberInfo> = visible_members
+        .into_iter()
+        .filter(|member| root_member_ids.contains(member.id.as_str()))
+        .collect();
+    let visible_ids: BTreeSet<&str> = visible_members
+        .iter()
+        .map(|member| member.id.as_str())
+        .collect();
+    let member_by_id: BTreeMap<&str, &MemberInfo> = members
+        .iter()
+        .map(|member| (member.id.as_str(), member))
+        .collect();
+
+    let edges = workspace_member_edges(metadata, &visible_ids, &root_member_ids, &member_by_id);
+    Ok(MemberGraph {
+        crate_count: visible_members.len() as u64,
+        edges,
+    })
+}
+
+// Scope behavior is deterministic:
+// - root scope: all workspace members are visible
+// - package scope: only that member is visible
+// - file/path scope: members that contain the selected path, or live under the selected
+//   directory, are visible
+//
+// Deps scoping intentionally keeps all outgoing workspace-member edges from visible
+// sources, even when the destination member is outside the visible set. This prevents
+// scoped runs from hiding forbidden edges that cross the visibility boundary.
+//
+// Invariants:
+// - crate_count: number of visible source members
+// - edge_count: unique workspace-member edges considered from visible sources
+// - offenders: violations among considered edges
+fn workspace_member_edges(
+    metadata: &CargoMetadata,
+    visible_ids: &BTreeSet<&str>,
+    root_member_ids: &BTreeSet<&str>,
+    member_by_id: &BTreeMap<&str, &MemberInfo>,
+) -> BTreeSet<(String, String)> {
+    let mut edges = BTreeSet::new();
+    if let Some(resolve) = &metadata.resolve {
+        for node in &resolve.nodes {
+            if !visible_ids.contains(node.id.as_str()) {
+                continue;
+            }
+            let Some(from_member) = member_by_id.get(node.id.as_str()) else {
+                continue;
+            };
+            for dep in &node.deps {
+                // Only keep edges to other workspace members; external dependencies are not
+                // part of this collector's graph.
+                let Some(to_member) = member_by_id.get(dep.pkg.as_str()) else {
+                    continue;
+                };
+                if !root_member_ids.contains(to_member.id.as_str()) {
+                    continue;
+                }
+                edges.insert((from_member.dir.clone(), to_member.dir.clone()));
+            }
+        }
+    }
+    edges
+}
+
+fn workspace_members(
+    metadata: &CargoMetadata,
+    repo_root: &Path,
+) -> Result<Vec<MemberInfo>, String> {
+    let workspace_member_ids: BTreeSet<&str> = metadata
+        .workspace_members
+        .iter()
+        .map(String::as_str)
+        .collect();
+    metadata
+        .packages
+        .iter()
+        .filter(|package| workspace_member_ids.contains(package.id.as_str()))
+        .map(|package| {
+            let manifest = PathBuf::from(&package.manifest_path);
+            let dir_abs = manifest
+                .parent()
+                .map(Path::to_path_buf)
+                .ok_or_else(|| format!("package {} has no manifest parent", package.name))?;
+            let dir_abs = dir_abs.canonicalize().map_err(|error| {
+                format!(
+                    "failed to canonicalize workspace member directory {}: {error}",
+                    dir_abs.display()
+                )
+            })?;
+            let dir = repo_relative_dir(repo_root, &dir_abs)?;
+            Ok(MemberInfo {
+                id: package.id.clone(),
+                name: package.name.clone(),
+                dir,
+                dir_abs,
+            })
+        })
+        .collect()
+}
+
+fn repo_relative_dir(repo_root: &Path, dir_abs: &Path) -> Result<String, String> {
+    let relative = dir_abs.strip_prefix(repo_root).map_err(|error| {
+        format!(
+            "workspace member {} is outside repo root {}: {error}",
+            dir_abs.display(),
+            repo_root.display()
+        )
+    })?;
+    let text = relative.to_string_lossy().replace('\\', "/");
+    Ok(if text.is_empty() {
+        String::from(".")
+    } else {
+        text
+    })
+}
+
+fn visible_members<'a>(
+    members: &'a [MemberInfo],
+    scope: &Scope,
+    repo_root: &Path,
+) -> Result<Vec<&'a MemberInfo>, String> {
+    if let Some(package) = &scope.package {
+        let member = members
+            .iter()
+            .find(|member| member.name == *package || member.dir == *package)
+            .ok_or_else(|| format!("package scope '{package}' was not found in cargo metadata"))?;
+        return Ok(vec![member]);
+    }
+
+    let Some(target) = scoped_path(scope, repo_root)? else {
+        return Ok(members.iter().collect());
+    };
+    Ok(members
+        .iter()
+        .filter(|member| target.starts_with(&member.dir_abs) || member.dir_abs.starts_with(&target))
+        .collect())
+}
+
+fn scoped_path(scope: &Scope, repo_root: &Path) -> Result<Option<PathBuf>, String> {
+    let value = if let Some(file) = &scope.file {
+        Some(file.as_str())
+    } else {
+        scope.path.as_deref()
+    };
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let path = if Path::new(value).is_absolute() {
+        PathBuf::from(value)
+    } else {
+        repo_root.join(value)
+    };
+    path.canonicalize().map(Some).map_err(|error| {
+        format!(
+            "dependency scope {} could not be resolved: {error}",
+            path.display()
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CargoMetadata, analyze_deps, compile_rules, matching_offenders};
+    use ayni_core::{AyniPolicy, Scope};
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn workspace_fixture_metadata(root: &std::path::Path) -> CargoMetadata {
+        let metadata_json = format!(
+            r#"{{
+                "packages": [
+                    {{"id": "core 0.1.0", "name": "ayni-core", "manifest_path": "{}/core/Cargo.toml"}},
+                    {{"id": "adapters-rust 0.1.0", "name": "ayni-adapters-rust", "manifest_path": "{}/adapters/rust/Cargo.toml"}},
+                    {{"id": "cli 0.1.0", "name": "ayni-cli", "manifest_path": "{}/cli/Cargo.toml"}}
+                ],
+                "workspace_members": ["core 0.1.0", "adapters-rust 0.1.0", "cli 0.1.0"],
+                "resolve": {{
+                    "nodes": [
+                        {{"id": "core 0.1.0", "deps": [{{"pkg": "adapters-rust 0.1.0"}}]}},
+                        {{"id": "adapters-rust 0.1.0", "deps": [{{"pkg": "cli 0.1.0"}}]}},
+                        {{"id": "cli 0.1.0", "deps": []}}
+                    ]
+                }}
+            }}"#,
+            root.display(),
+            root.display(),
+            root.display()
+        );
+        serde_json::from_str(&metadata_json).expect("metadata parse")
+    }
+
+    #[test]
+    fn deps_rule_matching_uses_repo_relative_member_dirs() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+        fs::create_dir_all(root.join("core")).expect("core dir");
+        fs::create_dir_all(root.join("adapters/rust")).expect("adapter dir");
+        fs::create_dir_all(root.join("cli")).expect("cli dir");
+
+        let metadata = workspace_fixture_metadata(root);
+
+        let forbidden = BTreeMap::from([
+            (String::from("core"), vec![String::from("adapters/*")]),
+            (String::from("adapters/*"), vec![String::from("cli")]),
+        ]);
+        let analysis =
+            analyze_deps(&metadata, root, &Scope::default(), root, &forbidden).expect("analysis");
+
+        assert_eq!(analysis.result.crate_count, 3);
+        assert_eq!(analysis.result.edge_count, 2);
+        assert_eq!(analysis.result.violation_count, 2);
+        assert_eq!(analysis.offenders[0].from, "adapters/rust");
+        assert_eq!(analysis.offenders[0].to, "cli");
+        assert_eq!(analysis.offenders[0].rule, "adapters/* -> cli");
+        assert_eq!(analysis.offenders[1].rule, "core -> adapters/*");
+    }
+
+    #[test]
+    fn scoped_package_keeps_outgoing_edges_to_non_visible_members() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+        fs::create_dir_all(root.join("core")).expect("core dir");
+        fs::create_dir_all(root.join("adapters/rust")).expect("adapter dir");
+        fs::create_dir_all(root.join("cli")).expect("cli dir");
+
+        let metadata = workspace_fixture_metadata(root);
+
+        let forbidden = BTreeMap::from([(String::from("core"), vec![String::from("adapters/*")])]);
+        let analysis = analyze_deps(
+            &metadata,
+            root,
+            &Scope {
+                package: Some(String::from("ayni-core")),
+                ..Scope::default()
+            },
+            root,
+            &forbidden,
+        )
+        .expect("analysis");
+
+        assert_eq!(analysis.result.crate_count, 1);
+        assert_eq!(analysis.result.edge_count, 1);
+        assert_eq!(analysis.result.violation_count, 1);
+        assert_eq!(analysis.offenders.len(), 1);
+        assert_eq!(analysis.offenders[0].from, "core");
+        assert_eq!(analysis.offenders[0].to, "adapters/rust");
+        assert_eq!(analysis.offenders[0].rule, "core -> adapters/*");
+    }
+
+    #[test]
+    fn repository_contract_enforces_the_documented_one_way_dependency_graph() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let contract = fs::read_to_string(repository.join(".ayni.toml")).expect("contract");
+        let policy = AyniPolicy::parse(&contract).expect("valid contract");
+        let forbidden = &policy
+            .rust
+            .deps
+            .as_ref()
+            .expect("Rust dependency policy")
+            .forbidden;
+        let compiled = compile_rules(forbidden).expect("valid dependency patterns");
+        let is_forbidden = |from: &str, to: &str| {
+            let edge = BTreeSet::from([(from.to_owned(), to.to_owned())]);
+            !matching_offenders(&edge, &compiled).is_empty()
+        };
+
+        let languages = [
+            "adapters/go",
+            "adapters/kotlin",
+            "adapters/node",
+            "adapters/python",
+            "adapters/rust",
+        ];
+        for destination in ["adapters/common"]
+            .into_iter()
+            .chain(languages)
+            .chain(["environment", "cli"])
+        {
+            assert!(
+                is_forbidden("core", destination),
+                "core -> {destination} must be forbidden"
+            );
+        }
+        for destination in languages.into_iter().chain(["environment", "cli"]) {
+            assert!(
+                is_forbidden("adapters/common", destination),
+                "adapters/common -> {destination} must be forbidden"
+            );
+        }
+        for source in languages {
+            for destination in languages {
+                if source != destination {
+                    assert!(
+                        is_forbidden(source, destination),
+                        "{source} -> {destination} must be forbidden"
+                    );
+                }
+            }
+            for destination in ["environment", "cli"] {
+                assert!(
+                    is_forbidden(source, destination),
+                    "{source} -> {destination} must be forbidden"
+                );
+            }
+        }
+        for destination in languages.into_iter().chain(["cli"]) {
+            assert!(
+                is_forbidden("environment", destination),
+                "environment -> {destination} must be forbidden"
+            );
+        }
+
+        assert!(!is_forbidden("adapters/common", "core"));
+        for source in languages {
+            for destination in ["core", "adapters/common"] {
+                assert!(
+                    !is_forbidden(source, destination),
+                    "{source} -> {destination} must remain allowed"
+                );
+            }
+        }
+        for destination in ["core", "adapters/common"] {
+            assert!(
+                !is_forbidden("environment", destination),
+                "environment -> {destination} must remain allowed"
+            );
+        }
+        for destination in ["core", "adapters/common"]
+            .into_iter()
+            .chain(languages)
+            .chain(["environment"])
+        {
+            assert!(
+                !is_forbidden("cli", destination),
+                "cli -> {destination} must remain allowed"
+            );
+        }
+    }
+}
