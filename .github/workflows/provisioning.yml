@@ -9,7 +9,6 @@ on:
       - .github/workflows/provisioning.yml
       - scripts/ci/provisioning.py
       - LICENSE
-      - NOTICE
   workflow_dispatch:
 
 permissions:
@@ -76,7 +75,7 @@ jobs:
           set -euo pipefail
           source .github/docker/provisioning.versions
           mkdir -p "$RUNNER_TEMP/provisioning"
-          cp LICENSE NOTICE .github/docker/ayni-provisioning.Dockerfile "$RUNNER_TEMP/provisioning/"
+          cp LICENSE .github/docker/ayni-provisioning.Dockerfile "$RUNNER_TEMP/provisioning/"
           {
             echo "debian=$DEBIAN_IMAGE"
             echo "mise=$MISE_VERSION"
@@ -113,7 +112,7 @@ jobs:
           test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$EXPECTED_COMMIT"
           test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "dev.ayni.provisioning.recipe" }}')" = "$EXPECTED_RECIPE"
           test "$(docker run --rm "$IMAGE" uname -m)" = "$EXPECTED_UNAME"
-          docker run --rm "$IMAGE" sh -eu -c 'test "$(id -u)" = 10001; test -w /workspace; ! command -v ayni; test -f /usr/share/doc/ayni/LICENSE; test -f /usr/share/doc/ayni/NOTICE'
+          docker run --rm "$IMAGE" sh -eu -c 'test "$(id -u)" = 10001; test -w /workspace; ! command -v ayni; test -f /usr/share/doc/ayni/LICENSE'
           test "$(docker run --rm "$IMAGE" mise --version | cut -d ' ' -f 1)" = "$EXPECTED_MISE"
       - name: Scan architecture image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

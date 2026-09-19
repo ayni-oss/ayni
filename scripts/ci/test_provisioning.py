@@ -40,7 +40,7 @@ class ProvisioningTests(unittest.TestCase):
     def test_recipe_tracks_provisioning_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in [".github/docker/provisioning.versions", ".github/docker/ayni-provisioning.Dockerfile", "LICENSE", "NOTICE"]:
+            for name in [".github/docker/provisioning.versions", ".github/docker/ayni-provisioning.Dockerfile", "LICENSE"]:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(name)

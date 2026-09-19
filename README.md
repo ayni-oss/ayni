@@ -272,8 +272,5 @@ Developer workflow, architecture constraints, and repository checks live in
 
 ## License
 
-Copyright (C) 2026 Gastón Durand Vadas.
-
-Ayni is licensed under the GNU Affero General Public License, version 3 only
-(`AGPL-3.0-only`). See [`LICENSE`](LICENSE) for the full license text and
-[`NOTICE`](NOTICE) for the repository copyright notice.
+Ayni is licensed under the Apache License, Version 2.0 (`Apache-2.0`). See
+[`LICENSE`](LICENSE) for the full license text.

@@ -18,7 +18,6 @@ def recipe_digest(root=ROOT):
         ".github/docker/provisioning.versions",
         ".github/docker/ayni-provisioning.Dockerfile",
         "LICENSE",
-        "NOTICE",
     ):
         data = (root / name).read_bytes()
         digest.update(name.encode() + b"\0" + str(len(data)).encode() + b"\0" + data)

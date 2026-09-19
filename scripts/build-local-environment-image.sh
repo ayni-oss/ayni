@@ -33,7 +33,7 @@ docker run --rm \
 context="$(mktemp -d "${TMPDIR:-/tmp}/ayni-env-context.XXXXXX")"
 trap 'rm -rf "$context"' EXIT
 cp "$repo_root/target/release/ayni" "$context/ayni"
-cp "$repo_root/LICENSE" "$repo_root/NOTICE" "$context/"
+cp "$repo_root/LICENSE" "$context/"
 cp "$repo_root/.github/docker/ayni-env.Dockerfile" "$context/"
 
 docker build \

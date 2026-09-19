@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.title="Ayni code environment" \
       org.opencontainers.image.source="https://github.com/gdurandvadas/ayni" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.version="${AYNI_VERSION}" \
-      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       dev.ayni.executor.lock-schema="0.7.0" \
       dev.ayni.executor.recipe="1" \
       dev.ayni.environment.variant="debian" \
@@ -39,7 +39,7 @@ RUN set -eux; \
     rm /tmp/mise
 
 COPY ayni /usr/local/bin/ayni
-COPY LICENSE NOTICE /usr/share/doc/ayni/
+COPY LICENSE /usr/share/doc/ayni/
 
 RUN chmod 0755 /usr/local/bin/ayni \
     && groupadd --gid 10001 ayni \

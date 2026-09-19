@@ -32,7 +32,7 @@ RUN groupadd --gid 10001 ayni \
     && mkdir -p /workspace /opt/ayni/mise /home/ayni/.cache \
     && chown -R 10001:10001 /workspace /opt/ayni /home/ayni
 
-COPY LICENSE NOTICE /usr/share/doc/ayni/
+COPY LICENSE /usr/share/doc/ayni/
 
 ENV HOME=/home/ayni \
     XDG_CACHE_HOME=/home/ayni/.cache \
@@ -48,7 +48,7 @@ LABEL org.opencontainers.image.title="Ayni provisioning substrate" \
       org.opencontainers.image.description="Language-neutral substrate; Ayni assembles repository tools and its executor separately" \
       org.opencontainers.image.source="https://github.com/gdurandvadas/ayni" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
-      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       dev.ayni.provisioning.schema="1" \
       dev.ayni.provisioning.recipe="${RECIPE_DIGEST}" \
       dev.ayni.environment.variant="debian" \

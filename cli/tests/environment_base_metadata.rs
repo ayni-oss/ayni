@@ -51,6 +51,6 @@ fn candidate_executor_metadata_matches_the_backend_contract() {
         ayni_core::ENVIRONMENT_LOCK_RECIPE_VERSION
     )));
     assert!(dockerfile.contains("COPY --chmod=0755 ayni /usr/local/bin/ayni"));
-    assert!(dockerfile.contains("COPY LICENSE NOTICE /usr/share/doc/ayni/"));
+    assert!(dockerfile.contains("COPY LICENSE /usr/share/doc/ayni/"));
     assert!(dockerfile.contains("ENTRYPOINT [\"ayni\"]"));
 }

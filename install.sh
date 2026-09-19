@@ -168,14 +168,14 @@ validate_archive_layout() {
   [ -n "$entries" ] || fail "release archive is empty"
   while IFS= read -r entry; do
     case "$entry" in
-      "$archive_root/"|"$archive_root/ayni"|"$archive_root/LICENSE"|"$archive_root/NOTICE") ;;
+      "$archive_root/"|"$archive_root/ayni"|"$archive_root/LICENSE") ;;
       *) fail "release archive has an unexpected path: $entry" ;;
     esac
   done <<EOF
 $entries
 EOF
 
-  for required in "$archive_root/" "$archive_root/ayni" "$archive_root/LICENSE" "$archive_root/NOTICE"; do
+  for required in "$archive_root/" "$archive_root/ayni" "$archive_root/LICENSE"; do
     count="$(printf '%s\n' "$entries" | grep -Fxc "$required" || true)"
     [ "$count" = "1" ] \
       || fail "release archive must contain exactly one $required entry"

@@ -60,7 +60,6 @@ cat > "$layout_bin/tar" <<'EOF'
 printf '%s\n' 'ayni-ayni-v1.2.3-x86_64-unknown-linux-gnu/'
 printf '%s\n' 'ayni-ayni-v1.2.3-x86_64-unknown-linux-gnu/ayni'
 printf '%s\n' 'ayni-ayni-v1.2.3-x86_64-unknown-linux-gnu/LICENSE'
-printf '%s\n' 'ayni-ayni-v1.2.3-x86_64-unknown-linux-gnu/NOTICE'
 EOF
 chmod +x "$layout_bin/tar"
 (

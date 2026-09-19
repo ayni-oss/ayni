@@ -98,5 +98,4 @@ For language adapter implementation guidance, see
 ## Licensing
 
 By contributing to Ayni, you agree that your contribution is licensed under
-the same license as the project: GNU Affero General Public License, version 3
-only (`AGPL-3.0-only`).
+the same license as the project: Apache License, Version 2.0 (`Apache-2.0`).

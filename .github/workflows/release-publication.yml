@@ -98,7 +98,7 @@ jobs:
           mkdir -p dist
           mkdir -p "dist/ayni-${TAG}-${TARGET}"
           cp "target/${TARGET}/release/ayni" "dist/ayni-${TAG}-${TARGET}/"
-          cp LICENSE NOTICE "dist/ayni-${TAG}-${TARGET}/"
+          cp LICENSE "dist/ayni-${TAG}-${TARGET}/"
           ARCHIVE="ayni-${TAG}-${TARGET}.tar.gz"
           tar -C dist -czf "dist/${ARCHIVE}" "ayni-${TAG}-${TARGET}"
           shasum -a 256 "dist/${ARCHIVE}" > "dist/${ARCHIVE}.sha256"
@@ -230,7 +230,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp LICENSE NOTICE .github/docker/
+          cp LICENSE .github/docker/
           source .github/docker/ayni-env.versions
           {
             echo "mise_version=$MISE_VERSION"

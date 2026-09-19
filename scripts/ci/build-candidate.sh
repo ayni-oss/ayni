@@ -18,7 +18,7 @@ docker run --rm --platform "$platform" --user "$(id -u):$(id -g)" \
   --volume "$PWD:/workspace" --workdir /workspace "$RUST_BUILDER_IMAGE" \
   cargo build --locked --release -p ayni-cli
 cp .ayni/ci-target/release/ayni "$output/ayni"
-cp LICENSE NOTICE "$output/"
+cp LICENSE "$output/"
 version="$("$output/ayni" --version)"
 version="${version#ayni }"
 source_revision="$(git rev-parse HEAD)"

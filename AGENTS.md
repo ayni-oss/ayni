@@ -100,18 +100,17 @@ cargo doc-cli > docs/cli.md
 - Keep the repository-agent quality contract in `.ayni.toml` at repo root.
 - Keep `.ayni/` generated artifacts out of source control.
 - Keep workspace checks runnable from repository root.
-- Keep open-source licensing metadata consistent: `LICENSE`, `NOTICE`, README,
+- Keep open-source licensing metadata consistent: `LICENSE`, README,
   contribution guidance, Cargo package metadata, and release archives must all
-  agree on `AGPL-3.0-only`.
+  agree on `Apache-2.0`.
 
 ## Before Editing
 
 - Confirm target crate boundaries and dependency direction.
 - Prefer scoped checks with `--file`, `--package`, and `--language` where supported.
 - Avoid adding network dependencies unless explicitly required and documented.
-- If changing legal, packaging, or release files, check whether `LICENSE`,
-  `NOTICE`, README, `CONTRIBUTING.md`, `Cargo.toml`, and release artifacts need
-  matching updates.
+- If changing legal, packaging, or release files, check whether `LICENSE`, README,
+  `CONTRIBUTING.md`, `Cargo.toml`, and release artifacts need matching updates.
 
 ## After Editing
 
