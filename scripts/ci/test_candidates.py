@@ -222,23 +222,24 @@ class CompletionTests(unittest.TestCase):
             )
             self.assertTrue(fixture.exists())
 
-    def test_fork_workflow_has_no_privileged_candidate_consumers(self):
+    def test_pull_request_workflow_runs_unprivileged_host_signals(self):
         workflow = (ROOT / ".github/workflows/ayni-status.yml").read_text()
         self.assertIn("  pull_request:", workflow)
         self.assertNotIn("pull_request_target", workflow)
         self.assertNotIn("workflow_run", workflow)
-        self.assertNotIn(": write", workflow)
         self.assertNotIn("secrets:", workflow)
-        action = (ROOT / ".github/actions/use-candidate/action.yml").read_text()
-        self.assertNotIn("run-id:", action)
-        self.assertNotIn("github-token:", action)
-        for filename in ("ayni-fixtures.yml", "ayni-repository.yml"):
-            consumer = (ROOT / ".github/workflows" / filename).read_text()
-            self.assertNotIn("cargo build", consumer)
-            self.assertNotIn("build-local-environment", consumer)
-        self.assertNotIn(
-            "candidate-", (ROOT / ".github/workflows/release.yml").read_text()
-        )
+        self.assertIn("pull-requests: write", workflow)
+        self.assertIn("check --host", workflow)
+        self.assertIn("<!-- ayni-signals -->", workflow)
+        for managed_pipeline_term in (
+            "candidate-",
+            "managed-lock",
+            "use-candidate",
+            "run_fixture.py",
+            "coordinate.py",
+            "docker ",
+        ):
+            self.assertNotIn(managed_pipeline_term, workflow)
 
 
 if __name__ == "__main__":

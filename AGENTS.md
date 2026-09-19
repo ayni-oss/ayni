@@ -178,3 +178,47 @@ Read `.ayni/last/signals.json` when present for typed completion and target
 accounting. For each finding, rerun its exact verification command and repair
 the listed offenders.
 <!-- AYNI:END -->
+
+## Public-project boundaries and CNCF-readiness audit
+
+Treat CNCF readiness as a continuous, evidence-based audit—not a status to
+claim. Ayni is public and independently useful without the private Ayni
+Orchestrator.
+
+Continually audit public Ayni work for:
+
+- Apache-2.0 consistency in `LICENSE`, Cargo metadata, documentation, images,
+  release archives, and contributor guidance.
+- Clear, current public governance, maintainer lifecycle, contributor roles,
+  decision-making, roadmap process, and Code of Conduct.
+- A real public roadmap, community channels, contribution path, release policy,
+  and security reporting process.
+- Secure repository controls and truthful security documentation.
+- No fabricated claims about adopters, community activity, releases, security
+  reviews, OpenSSF badges, or CNCF status.
+
+Create public documents only for real, current practices. Record unmet CNCF
+criteria as gaps or future work; never represent plans as evidence. Do not add
+agent-skill bundles, personal `.agents/` or `.codex/` directories, credentials,
+local configuration, private fixtures, or any orchestrator material to Ayni.
+
+Work only in repositories and GitHub organizations explicitly placed in scope.
+Do not inspect, list, modify, or infer access to another organization. Do not
+make Ayni depend on the orchestrator, and do not publish images, packages,
+releases, sites, or announcements without explicit approval.
+
+## Credentials and change reporting
+
+- Never read, store, print, export, inspect, modify, or work around secrets.
+- Do not invoke 1Password, keychain, SSH agents, credential helpers, or
+  authentication tooling unless explicitly authorized for that exact action.
+- A request to push permits only the existing GitHub CLI session; do not expose
+  tokens or change credential configuration. If authentication is unavailable,
+  stop and report it rather than trying another secret source.
+- For each change, start from an updated default branch on a fresh descriptive
+  branch; never work directly on the default branch or reuse a merged branch.
+- Keep PRs focused, commit with DCO sign-off and a cryptographic signature when
+  configured, push and open or update the PR, and never merge automatically.
+- Keep reports and PR descriptions factual: scope, security impact, validation,
+  known follow-up work, and any upstream transient failure distinct from a
+  product failure.
