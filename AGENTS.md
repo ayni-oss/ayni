@@ -21,6 +21,7 @@ Ayni is an open-source code-quality signal tool for AI agents.
 ## Pull Requests
 
 - Use PR titles in the format `<change-type>(<scope>): <description>`.
+- Sign every commit with the Developer Certificate of Origin using `git commit -s`.
 
 ## Release Workflows
 
