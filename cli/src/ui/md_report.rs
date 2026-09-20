@@ -8,12 +8,9 @@ use crate::ui::report_view::{
     completion_state_label, signal_kind_label,
 };
 
-const PASS_IMAGE_URL: &str =
-    "https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/pass.svg";
-const WARN_IMAGE_URL: &str =
-    "https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/warn.svg";
-const FAIL_IMAGE_URL: &str =
-    "https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/fail.svg";
+const PASS_IMAGE_URL: &str = "https://assets.ayni.build/v1/cli/pass.svg";
+const WARN_IMAGE_URL: &str = "https://assets.ayni.build/v1/cli/warn.svg";
+const FAIL_IMAGE_URL: &str = "https://assets.ayni.build/v1/cli/fail.svg";
 
 fn push_heading(out: &mut String, scope: CompletionScope) {
     match scope {
