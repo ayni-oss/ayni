@@ -155,6 +155,7 @@ fn coverage_command(context: &RunContext) -> (String, Vec<String>, String) {
         let args = if override_cmd.args.is_empty() {
             vec![
                 String::from("llvm-cov"),
+                String::from("--no-cfg-coverage"),
                 String::from("--workspace"),
                 String::from("--json"),
                 String::from("--summary-only"),
@@ -169,6 +170,7 @@ fn coverage_command(context: &RunContext) -> (String, Vec<String>, String) {
         String::from("cargo"),
         vec![
             String::from("llvm-cov"),
+            String::from("--no-cfg-coverage"),
             String::from("--workspace"),
             String::from("--json"),
             String::from("--summary-only"),
@@ -439,7 +441,13 @@ enabled = ["rust"]
         assert_eq!(program, "cargo");
         assert_eq!(
             args,
-            vec!["llvm-cov", "--workspace", "--json", "--summary-only"]
+            vec![
+                "llvm-cov",
+                "--no-cfg-coverage",
+                "--workspace",
+                "--json",
+                "--summary-only",
+            ]
         );
         assert_eq!(engine, "cargo-llvm-cov");
     }

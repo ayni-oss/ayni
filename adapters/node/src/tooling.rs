@@ -3,8 +3,8 @@ use ayni_core::ManagedToolSpec;
 
 pub static NODE_TOOLS: &[ManagedToolSpec] = &[
     ManagedToolSpec::runtime("node"),
-    ManagedToolSpec::project("vitest", "3.2.7"),
-    ManagedToolSpec::project("@vitest/coverage-v8", "3.2.7"),
+    ManagedToolSpec::project("vitest", "5.0.1"),
+    ManagedToolSpec::project("@vitest/coverage-v8", "5.0.1"),
     ManagedToolSpec::project("eslint", "9.39.5"),
     ManagedToolSpec::project("@typescript-eslint/parser", "8.67.0"),
 ];

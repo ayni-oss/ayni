@@ -362,7 +362,7 @@ mod tests {
         assert!(text.contains("## rust (workspace)"));
         assert!(text.contains("| # | Signal | Summary | Status |"));
         assert!(text.contains(
-            r#"| **1** | **coverage** | `percent=41.0% status=ok` | <img src="https://raw.githubusercontent.com/ayni-oss/ayni/refs/heads/main/assets/fail.svg" alt="fail" width="20" height="20"> fail |"#
+            r#"| **1** | **coverage** | `percent=41.0% status=ok` | <img src="https://assets.ayni.build/v1/cli/fail.svg" alt="fail" width="20" height="20"> fail |"#
         ));
         assert!(text.contains("<details>\n<summary>Offenders</summary>\n\n"));
         assert!(text.contains("\ncoverage\n- "));
@@ -446,7 +446,7 @@ mod tests {
             (ReportStatus::Fail, "fail.svg", "fail"),
         ] {
             let badge = status_badge(status);
-            assert!(badge.contains(&format!("/assets/{asset}")));
+            assert!(badge.contains(&format!("https://assets.ayni.build/v1/cli/{asset}")));
             assert!(badge.contains(&format!(r#"alt="{label}""#)));
             assert!(badge.ends_with(label));
         }
