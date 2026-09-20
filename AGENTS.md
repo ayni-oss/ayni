@@ -22,6 +22,8 @@ Ayni is an open-source code-quality signal tool for AI agents.
 
 - Use PR titles in the format `<change-type>(<scope>): <description>`.
 - Sign every commit with the Developer Certificate of Origin using `git commit -s`.
+- Cryptographically sign every commit using the configured Git signing key; keep
+  `commit.gpgsign=true` enabled and verify the signature before pushing.
 
 ## Release Workflows
 
