@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.13.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.12.0...ayni-v0.13.0) (2026-09-23)
+
+
+### Features
+
+* **release:** onboard conventional release workflow ([#17](https://github.com/ayni-oss/ayni/issues/17)) ([5b83e38](https://github.com/ayni-oss/ayni/commit/5b83e38b6edaddba1f3e2b789d17ccc4ca4b6f00))
+
+
+### Bug Fixes
+
+* **cli:** serve report badges from project assets ([#13](https://github.com/ayni-oss/ayni/issues/13)) ([bb6d227](https://github.com/ayni-oss/ayni/commit/bb6d22774bec0165f35c9fe714f35e91bc2d8eac))
+* **docs:** align Mermaid with VitePress plugin ([#15](https://github.com/ayni-oss/ayni/issues/15)) ([d9a03fa](https://github.com/ayni-oss/ayni/commit/d9a03fa59ac155ed58e6a2724647249f26d3a465))
+* **docs:** build custom domain assets at root ([#16](https://github.com/ayni-oss/ayni/issues/16)) ([bf9e0b0](https://github.com/ayni-oss/ayni/commit/bf9e0b0a58464a915df5d4599b75adcbb01a331c))
+* **docs:** use Node version supported by Mermaid ([#14](https://github.com/ayni-oss/ayni/issues/14)) ([2f1a398](https://github.com/ayni-oss/ayni/commit/2f1a398431c2e80e006acef6967e6cd669cf88ae))
+* **packaging:** remove NOTICE dependency ([367a281](https://github.com/ayni-oss/ayni/commit/367a281b0c75afb293e9d03f17f3b396abc93610))
+
 ## [0.12.0](https://github.com/gdurandvadas/ayni/compare/ayni-v0.11.6...ayni-v0.12.0) (2026-09-07)
 
 
