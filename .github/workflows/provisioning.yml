@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   source:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       commit: ${{ steps.source.outputs.commit }}
       recipe: ${{ steps.source.outputs.recipe }}
@@ -50,7 +50,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             uname: x86_64
           - arch: arm64
             os: ubuntu-24.04-arm
@@ -142,7 +142,7 @@ jobs:
 
   publish:
     needs: [source, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       reference: ${{ steps.publication.outputs.reference }}
     permissions:
@@ -214,7 +214,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             uname: x86_64
           - os: ubuntu-24.04-arm
             uname: aarch64
@@ -235,7 +235,7 @@ jobs:
   completion:
     if: always()
     needs: [source, build, publish, consume]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Require complete publication
         env:
