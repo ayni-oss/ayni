@@ -55,7 +55,7 @@ jobs:
 
       - name: Build VitePress
         env:
-          VITEPRESS_BASE: /ayni/ayni/
+          VITEPRESS_BASE: /
         run: npm run docs:build
 
       - name: Upload Pages artifact
