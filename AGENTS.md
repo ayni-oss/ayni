@@ -21,11 +21,20 @@ Ayni is an open-source code-quality signal tool for AI agents.
 ## Pull Requests
 
 - Use PR titles in the format `<change-type>(<scope>): <description>`.
+- Squash-merge PR titles are release inputs: keep them Conventional Commit
+  titles because Release Please uses the resulting main-branch history for
+  changelog entries and SemVer bumps. The repository CI validates PR titles.
 - Sign every commit with the Developer Certificate of Origin using `git commit -s`.
 - Cryptographically sign every commit using the configured Git signing key; keep
   `commit.gpgsign=true` enabled and verify the signature before pushing.
 
 ## Release Workflows
+
+- Use Release Please for release PRs, version-file updates, changelogs, and
+  GitHub release creation. Keep artifact build, signing, publication, and
+  public-release validation in the separate publication workflow.
+- Follow the release policy in `CONTRIBUTING.md`; do not manually edit the
+  release manifest except when bootstrapping or repairing documented state.
 
 - Treat creation of the public GitHub release as a durable boundary. Every
   downstream publication step—binary assets, checksums, OCI images, signatures,

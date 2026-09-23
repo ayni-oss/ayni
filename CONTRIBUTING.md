@@ -93,6 +93,8 @@ For language adapter implementation guidance, see
 
 ## Pull Request Checklist
 
+- PR title follows `<type>(<scope>): <description>`; the title becomes the
+  squash-merge commit and drives the automated changelog and release version.
 - Tests added or updated when behavior changes.
 - No managed service dependency introduced.
 - Local artifact behavior preserved.
@@ -101,6 +103,30 @@ For language adapter implementation guidance, see
 - README or docs updated if behavior changed.
 - `ayni agents sync` is idempotent and preserves user content outside Ayni's marked block.
 - `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo check` pass.
+
+## Releases
+
+Release metadata is managed by [Release Please](https://github.com/googleapis/release-please)
+from the Conventional Commit title of each squash-merged pull request. It
+opens a release pull request that updates the version and changelog. Merging
+that release pull request creates the GitHub release and the `ayni-vX.Y.Z`
+tag; the release workflow then builds, signs, checksums, and validates the
+published CLI artifacts.
+
+The project follows Semantic Versioning:
+
+- `feat` and other backwards-compatible functionality normally produce a
+  minor release.
+- `fix`, documentation, maintenance, and security fixes normally produce a
+  patch release.
+- Breaking changes use `!` (for example `feat!:` or `feat(cli)!:`) and require
+  a major release.
+
+The `ayni-` tag prefix is retained because it is part of the existing installer,
+archive, recovery, and changelog contracts. It is not a second version number;
+the semantic version remains `X.Y.Z` and the CLI displays that unprefixed
+version. Do not create tags or GitHub releases manually except through the
+documented recovery workflow.
 
 ## Developer Certificate of Origin and signatures
 
