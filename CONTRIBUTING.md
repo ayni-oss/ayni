@@ -95,6 +95,10 @@ For language adapter implementation guidance, see
 
 - PR title follows `<type>(<scope>): <description>`; the title becomes the
   squash-merge commit and drives the automated changelog and release version.
+- Trusted metadata automation maps `feat` and `perf` to `kind/feature`, `fix` to
+  `kind/bug`, `docs` or a `docs` scope to `kind/documentation`, a `security`
+  scope to `kind/security`, and other supported types to `kind/chore`. It owns
+  those five labels on pull requests but does not infer priority.
 - Tests added or updated when behavior changes.
 - No managed service dependency introduced.
 - Local artifact behavior preserved.
