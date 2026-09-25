@@ -1,0 +1,80 @@
+name: PR metadata
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  classify:
+    name: classify conventional change
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Apply kind label from title
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const title = context.payload.pull_request.title.trim();
+            const pattern = /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\(([a-z0-9][a-z0-9._/-]*)\))?(!)?: \S.*\S$/;
+            const match = title.match(pattern);
+            const managed = [
+              "kind/bug",
+              "kind/chore",
+              "kind/documentation",
+              "kind/feature",
+              "kind/security",
+            ];
+            const current = await github.paginate(
+              github.rest.issues.listLabelsOnIssue,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                per_page: 100,
+              },
+            );
+            const currentNames = new Set(current.map(({ name }) => name));
+
+            let desired = null;
+            if (match) {
+              const [, type, scope = ""] = match;
+              const scopeRoot = scope.split(/[./]/, 1)[0];
+              if (scopeRoot === "security") {
+                desired = "kind/security";
+              } else if (type === "docs" || scopeRoot === "docs") {
+                desired = "kind/documentation";
+              } else if (type === "feat" || type === "perf") {
+                desired = "kind/feature";
+              } else if (type === "fix") {
+                desired = "kind/bug";
+              } else {
+                desired = "kind/chore";
+              }
+            }
+
+            for (const label of managed) {
+              if (label !== desired && currentNames.has(label)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: label,
+                });
+              }
+            }
+
+            if (desired && !currentNames.has(desired)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [desired],
+              });
+              core.info(`Applied ${desired} to #${context.issue.number}`);
+            } else if (!desired) {
+              core.notice("The title is not valid Conventional Commit syntax; CI will report the validation failure.");
+            }
