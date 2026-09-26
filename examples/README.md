@@ -28,16 +28,12 @@ hatch. For example, after installing the Go toolchain and `gocyclo`:
 ayni check --host --config examples/go/mono/.ayni.toml
 ```
 
-Pull-request CI builds a checkout-local environment base, creates an ephemeral
-lock for each fixture, and runs `env build`, `env doctor`, and managed `check`.
-The `ayni-go`, `ayni-node`, `ayni-python`, and `ayni-kotlin` workflows validate
-the matching `mono/` fixture, while `ayni-rust` validates the committed root
-lock and runs Ayni against itself through the managed path. `ayni-quality` runs
-the classic repository gates, and `ayni-status` reports the single `status`
-context required by the repository ruleset after all six workflows pass. Python pins its runtime, uv version, and
-signal tools in `.python-version`, `pyproject.toml`, and `uv.lock`; Kotlin pins
-its JDK contract, Gradle wrapper distribution, dependency locks, and artifact
-verification metadata with the fixture.
+Pull-request CI builds the committed root environment, verifies it, and runs
+Ayni's repository contract. Exercise affected fixtures locally through their
+managed lifecycle when changing adapter or example behavior. Python pins its
+runtime, uv version, and signal tools in `.python-version`, `pyproject.toml`, and
+`uv.lock`; Kotlin pins its JDK contract, Gradle wrapper distribution, dependency
+locks, and artifact verification metadata with the fixture.
 
 The `single/` fixtures intentionally omit Ayni configuration so they can be
 used as raw language examples. Use `ayni agents sync --repo-root <path>` only
