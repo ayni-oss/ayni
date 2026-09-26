@@ -231,6 +231,10 @@ class CompletionTests(unittest.TestCase):
         self.assertIn("ayni check --config .ayni.toml --output markdown", workflow)
         self.assertIn("<!-- ayni-signals -->", workflow)
 
+        metadata_job = workflow.split("\n  metadata:\n", 1)[1].split("\n  cncf:\n", 1)[0]
+        self.assertIn("issues: write", metadata_job)
+        self.assertIn("pull-requests: write", metadata_job)
+
         ayni_job = workflow.split("\n  ayni:\n", 1)[1].split("\n  report:\n", 1)[0]
         self.assertIn("contents: read", ayni_job)
         self.assertNotIn("pull-requests: write", ayni_job)
