@@ -222,16 +222,31 @@ class CompletionTests(unittest.TestCase):
             )
             self.assertTrue(fixture.exists())
 
-    def test_pull_request_workflow_runs_unprivileged_host_signals(self):
-        workflow = (ROOT / ".github/workflows/ayni-status.yml").read_text()
+    def test_pull_request_workflow_separates_execution_from_writes(self):
+        workflow = (ROOT / ".github/workflows/pr-validation.yml").read_text()
         self.assertIn("  pull_request:", workflow)
         self.assertNotIn("pull_request_target", workflow)
         self.assertNotIn("workflow_run", workflow)
         self.assertNotIn("secrets:", workflow)
-        self.assertIn("pull-requests: write", workflow)
-        self.assertIn("check --host", workflow)
+        self.assertIn("ayni env build --repo-root .", workflow)
+        self.assertIn("ayni check --config .ayni.toml --output markdown", workflow)
         self.assertIn("<!-- ayni-signals -->", workflow)
-        for managed_pipeline_term in (
+
+        metadata_job = workflow.split("\n  metadata:\n", 1)[1].split("\n  cncf:\n", 1)[0]
+        self.assertIn("issues: write", metadata_job)
+        self.assertIn("pull-requests: write", metadata_job)
+
+        ayni_job = workflow.split("\n  ayni:\n", 1)[1].split("\n  report:\n", 1)[0]
+        self.assertIn("contents: read", ayni_job)
+        self.assertNotIn("pull-requests: write", ayni_job)
+        self.assertNotIn("issues: write", ayni_job)
+
+        report_job = workflow.split("\n  report:\n", 1)[1]
+        self.assertIn("pull-requests: write", report_job)
+        self.assertNotIn("actions/checkout", report_job)
+        self.assertNotIn("ayni check", report_job)
+
+        for removed_pipeline_term in (
             "candidate-",
             "managed-lock",
             "use-candidate",
@@ -239,7 +254,7 @@ class CompletionTests(unittest.TestCase):
             "coordinate.py",
             "docker ",
         ):
-            self.assertNotIn(managed_pipeline_term, workflow)
+            self.assertNotIn(removed_pipeline_term, workflow)
 
 
 if __name__ == "__main__":

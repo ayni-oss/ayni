@@ -1,153 +1,54 @@
-# Provisioning publication and CI evidence
+# Provisioning and repository automation
 
-Ayni is migrating to one composed repository environment whose durable
-provisioning substrate is independent of the executor being tested. The new
-`ayni-provisioning` image contains Debian prerequisites, Mise, and the execution
-user; it contains no Ayni executable or language-specific runtime.
+Ayni uses one composed repository environment whose durable provisioning
+substrate is independent of the executor. The `ayni-provisioning` image contains
+Debian prerequisites, Mise, and the execution user; it does not contain an Ayni
+executable or language-specific runtime.
 
-## Publication and adoption
+## Provisioning contract
 
-`.github/docker/provisioning.versions` is the shared source of immutable Debian
-and exact Mise inputs. The existing release image sources these same inputs and
-keeps its current archive/image contract during migration.
+`.github/docker/provisioning.versions` records the immutable Debian and Mise
+inputs used by the substrate. `environment/provisioning.json` is the
+authoritative substrate reference embedded in Ayni, and `.ayni.lock` binds the
+repository contract to an exact published digest.
 
-The provisioning workflow runs only from trusted `main`, on provisioning input
-changes or explicit manual dispatch. It builds and verifies both native Linux
-architectures, scans each image, assembles the two-platform manifest, signs its
-immutable digest, and verifies the signature before publishing the recipe tag.
-Missing architecture, scan, signature, or publication work fails completion.
-Publication is serialized and is not cancelled midway. Dispatching again is the
-recovery path; previously adopted immutable digests remain addressable even if
-the recipe tag points at a recovered build.
+A substrate digest must be built for every supported architecture, scanned, and
+publicly pullable before it is adopted. Updating the committed reference is a
+separate reviewed change. The repository no longer publishes provisioning
+images from a GitHub Actions workflow.
 
-The `provisioning-reference` artifact retains the verified immutable reference
-and manifest for 14 days. `environment/provisioning.json` is the authoritative
-adopted substrate definition embedded in Ayni. The initial digest was built,
-scanned, signed and publicly consumed on both architectures by
-[publication run 34032769817](https://github.com/gdurandvadas/ayni/actions/runs/34032769817).
-Adopt updates only after the same gates succeed. Never commit a job-local
-registry reference as the provisioning base.
+Environment lock schema `0.7.0` separates the provisioning substrate from the
+executor identity. Regenerate a changed lock twice with the checkout CLI and
+require byte-for-byte equality before committing it.
 
-Environment lock schema `0.7.0` separates that substrate from executor identity.
-CI passes its checkout image to `env build --executor-image`, and compares the
-complete committed lock without deleting or substituting any base fields.
-Release-lock synchronization uses the checkout CLI and retains the committed
-base, requiring two identical regenerations. Older public release images retain their original contracts for tagged-release
-recovery. Migrated executors advertise their lock schema and recipe; only their
-executable is copied into the final prepared environment.
+## Pull-request validation
 
-## Required validation
+`.github/workflows/pr-validation.yml` is the single pull-request workflow. It:
 
-The stable required `status` check accepts only successful required jobs.
-Dependency PRs have no author-based exemption. Until conservative change
-classification is introduced, they run the full suite, including Rust, native
-managed examples, documentation build/audit, and workflow validation.
+- validates Conventional Commit title syntax and maintains the corresponding
+  `kind/*` label;
+- verifies the project files required by the repository's CNCF-readiness policy;
+- installs the pinned public Ayni CLI, builds and verifies the committed managed
+  environment, and runs `ayni check`; and
+- creates or updates one marked Ayni results comment on every pull-request run.
 
-Ordinary merges must wait for the required status. The default-branch ruleset
-has no standing bypass actors. An emergency requires an explicit temporary
-administrator change and restoration of the original protection afterwards.
-Never use bypass to hide failed or missing validation.
+The Ayni execution job has read-only repository permission. Label and comment
+writes happen in separate jobs so pull-request code does not run with a write
+credential. The comment job consumes only the Markdown report artifact and
+updates the existing marked comment instead of appending a new comment on each
+synchronization.
 
-The Rust dependency audit runs independently from fast correctness checks. Its
-exact executable is cached by tool version, platform and build toolchain;
-advisory data is fetched on each invocation, not baked into the executable cache.
+Run affected fixtures and specialized delivery checks locally when changing
+adapter, environment, installer, or publication behavior. The pull-request
+workflow intentionally represents only the repository's declared Ayni contract.
 
-Managed jobs upload only declared locks, signals, summaries and stage timings
-before cleanup, with 14-day retention. `scripts/ci/timed.py` records stage name,
-start time, duration and exit code, not command arguments or environment values.
-Image build currently combines provisioning and dependency preparation into one
-stage; the subsequent build refactor will expose them independently. Measure
-elapsed workflow duration and summed job durations separately: parallel setup
-duplication consumes runner time without adding the same amount to wall time.
+## CLI release
 
-## Shared PR candidates and fixture execution
+`.github/workflows/release.yml` uses Release Please on `main` and supports manual
+recovery for an existing release tag. When a release is created or selected, it
+calls `.github/workflows/release-publication.yml` to build the supported macOS
+and Linux CLI archives, attest them, generate checksums, and upload the assets.
 
-`scripts/ci/fixtures.json` declares the required native PR platforms and fixtures,
-including roots and expected check exits. PRs currently require Linux amd64;
-the same candidate and consumer contracts also accept native arm64 runners.
-The coordinator publishes `required-work/plan.json` before building candidates.
-No labels, authors or uncertain impact classifications reduce this inventory.
-
-Each platform builds the CLI once with the pinned Bookworm Rust builder. The
-candidate artifact contains that executable, a Docker archive of its minimal
-executor image, checksums, exact commit, version, image identity and platform.
-The Docker archive transports the OCI-compatible image without publishing it.
-Consumers download only from the current unprivileged PR run, check the complete
-inventory before import, verify the image labels and executable bytes, and push
-to a loopback-only job-local registry. The immutable local manifest reference is
-passed to `env build --executor-image`; it never enters the committed lock.
-Candidate compilation caches have a PR-only prefix and publication never reads
-them. Cold caches use the same pinned builder, locked dependencies and validation.
-
-Lock consistency, repository self-validation and the selected fixture jobs consume
-the same candidate. Repository validation and the Rust fixture are independent;
-no fixture job compiles its own orchestrator or executor. Compiling a fixture's
-own tests inside its managed environment is still part of its quality contract.
-Classic tests, MSRV and generated documentation remain separate contracts. PR
-validation uses read-only permissions throughout; check output and retained logs
-provide the summary instead of a privileged PR-comment step.
-
-`scripts/ci/run_fixture.py` takes an explicit CLI path, executor identity, fixture
-root, expected roots/outcome and artifact directory. Both candidate validation
-and publicly installed release validation call it. Artifact interpretation stays
-in the existing strict fixture validator; the runner adds lifecycle orchestration
-and verifies the signals digest against execution provenance. Recovery of tags
-predating this helper uses their original validation path from tagged source.
-There are no privileged consumers of PR candidate artifacts.
-
-Every managed consumer retains its effective lock, build record, signals,
-execution provenance, stage logs, timings and a checksummed receipt for 14 days.
-Final `status` requires every declared job to succeed and independently checks
-all receipts, source/platform identities, signal/build/lock bindings and both
-complete lock regenerations. A skipped/cancelled job or missing artifact fails
-completion even if other jobs succeeded. Fixture contracts intentionally expect
-some failing quality signals; their semantic validator must still succeed.
-
-Measure first actionable failure, elapsed run time, summed job time, candidate
-build count, transfer/import time and warm/cold cache behavior separately. The
-8–9 minute full-PR target is a comparison goal, not a reason to omit coverage.
-
-
-## Composed fixtures and proportional coverage
-
-The fixture manifest includes all-five-language, Rust+Node and Kotlin+Go cases.
-The shared runner materializes tracked canonical examples into disposable Git
-workspaces, retaining their native package locks. Rust invokes Node; a Kotlin
-test invokes Go, which invokes Java. The Rust+Node case includes a second Node
-workspace. Validation requires every declared target, the expected per-target
-policy outcomes, aggregate failure accounting, root development access, and
-exactly one quality-workload container. Setup and access launches are recorded
-separately in the retained evidence.
-
-The coordinator retains its changed-file inventory, selection reason and omitted
-fixtures. Shared core, environment, schema, Cargo, workflow or unknown changes
-run every fixture. Adapter changes retain their native fixture and all interacting
-compositions. Classic, managed repository, lock consistency and audit gates remain
-required. Documentation deployment filters its own inputs and retains manual dispatch.
-
-## Publication and recovery
-
-`release.yml` keeps Release Please and release-lock PR maintenance separate from
-`release-publication.yml`. The latter runs under a release-tag concurrency group
-with cancellation disabled. Both the caller and publication workflow retain
-unconditional completion checks; a public release cannot be considered complete
-when a publication or validation job is skipped, cancelled or missing.
-
-Linux executables build once in the pinned Bookworm builder. Downloadable archives
-and executor images consume those same bytes; macOS retains native builds.
-`release_artifacts.py` centralizes peeled-tag source checks, exact archive inventory,
-checksum generation, public verification and intentional overwrite recovery.
-Boundary checks still run before binary and image promotion. Recovery uses the
-current workflow/helpers with tagged source. Public installer and managed fixture
-evidence run on both Linux architectures; older tags retain their declared fixture
-and lock protocol rather than receiving invented compatibility claims.
-
-The signer identity is now the trusted `release-publication.yml` workflow on main,
-matching [Sigstore's reusable-workflow identity contract](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
-Existing published images remain available during the migration.
-
-Performance comparisons must identify the source, cache state and selected work.
-The earlier full PR measured 7m16s / 22m51s summed jobs with a cold candidate cache,
-and 6m57s / 19m26s on a confirmed warm candidate rerun. Other caches were uncontrolled.
-The new composition coverage and cache transfer costs must be included in the next
-comparison; these earlier measurements are not a claim for this expanded suite.
+Release publication uses immutable tagged source and remains recoverable for an
+existing public release. The archive naming contract is
+`ayni-<release-tag>-<target>.tar.gz`.

@@ -70,12 +70,10 @@ Regenerate the CLI reference after changing commands or flags:
 cargo doc-cli > docs/cli.md
 ```
 
-Every pull request verifies that `docs/cli.md` matches `cargo doc-cli` and that
-VitePress builds successfully as part of the event-driven `ayni-status` gate.
-Pushes to `main` additionally deploy the uploaded `docs/.vitepress/dist` artifact
-to GitHub Pages; source documentation remains under `docs/`.
-
-Documentation is deployed only when the organization configures GitHub Pages for this repository.
+Run the CLI-reference diff and VitePress build locally when documentation or
+CLI output changes. The `PR Validation` workflow runs the repository's configured
+Ayni contract and updates one durable Ayni results comment on the pull request;
+it does not deploy the documentation site.
 
 For language adapter implementation guidance, see
 [`docs/contributing/adapters.md`](docs/contributing/adapters.md).
