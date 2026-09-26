@@ -224,7 +224,8 @@ class CompletionTests(unittest.TestCase):
 
     def test_pull_request_workflow_separates_execution_from_writes(self):
         workflow = (ROOT / ".github/workflows/pr-validation.yml").read_text()
-        self.assertIn("  pull_request_target:", workflow)
+        self.assertIn("  pull_request:", workflow)
+        self.assertNotIn("pull_request_target", workflow)
         self.assertNotIn("workflow_run", workflow)
         self.assertNotIn("secrets:", workflow)
         self.assertIn("ayni env build --repo-root .", workflow)
