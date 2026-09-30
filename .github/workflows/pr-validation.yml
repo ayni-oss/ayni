@@ -128,23 +128,33 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
 
-      - name: Build checkout Ayni candidate
+      - name: Build and import checkout Ayni candidate
+        id: candidate
+        env:
+          PLATFORM: linux/amd64
+          SOURCE: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          scripts/ci/build-candidate.sh .ayni/ci-candidate linux/amd64
-          echo "$GITHUB_WORKSPACE/.ayni/ci-candidate" >> "$GITHUB_PATH"
+          scripts/ci/build-candidate.sh .ayni/ci-candidate "$PLATFORM"
+          docker run --detach --rm --name ayni-local-registry --publish 127.0.0.1:5000:5000 registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null
+          python3 scripts/ci/candidate.py import --directory .ayni/ci-candidate --source "$SOURCE" --platform "$PLATFORM" --run-id "$GITHUB_RUN_ID"
 
       - name: Run Ayni
         run: |
           set +e
-          ayni env build --repo-root . --executor-image ayni-candidate:checkout
+          "${{ steps.candidate.outputs.cli }}" env build --repo-root . --executor-image "${{ steps.candidate.outputs.executor }}"
           exit_code=$?
           if [ "$exit_code" -eq 0 ]; then
-            ayni env doctor --repo-root .
+            "${{ steps.candidate.outputs.cli }}" env doctor --repo-root .
             exit_code=$?
           fi
           if [ "$exit_code" -eq 0 ]; then
-            ayni check --config .ayni.toml --output markdown > "$RUNNER_TEMP/ayni.md"
+            "${{ steps.candidate.outputs.cli }}" check --config .ayni.toml --output markdown > "$RUNNER_TEMP/ayni.md"
             exit_code=$?
           fi
           exit "$exit_code"
