@@ -93,9 +93,10 @@ pub use signal::{
     CoverageOffender, CoverageResult, DepsBudget, DepsOffender, DepsResult, ExecutionMode,
     FailureSummary, Finding, FindingError, FindingMetadata, Findings, FloatThresholdBudget,
     InvocationContext, Level, MutationBudget, MutationOffender, MutationResult, OffenderIdentity,
-    OffenderSummary, Offenders, OutputContext, RunArtifact, RunArtifactMetadata, RunCompletion,
-    SignalKind, SignalResult, SignalRow, SizeBudget, SizeBudgetRule, SizeOffender, SizeResult,
-    TestBudget, TestFailure, TestResult, VerificationMetadata, VerificationTarget,
+    OffenderSummary, Offenders, OutputContext, PrebuiltRuntimeIdentity, RunArtifact,
+    RunArtifactMetadata, RunCompletion, SignalKind, SignalResult, SignalRow, SizeBudget,
+    SizeBudgetRule, SizeOffender, SizeResult, TestBudget, TestFailure, TestResult,
+    VerificationMetadata, VerificationTarget,
 };
 pub use threshold::{
     ConfiguredMetricEvaluation, classify_maximum, classify_minimum, evaluate_configured_metric,

@@ -425,3 +425,27 @@ persist; the inner quality command's exit code is preserved.
 For command flags, see the [CLI reference](/cli). For runner resolution,
 timeouts, diagnostics, and failure categories, see [Runtime and setup
 rules](/product/runtime).
+
+## Prebuilt runtime discovery
+
+A published Ayni environment can run `ayni check` without a local container
+engine. Ayni recognizes this mode only when `/etc/ayni/runtime.json` is a
+root-owned regular file containing the portable environment-certificate
+envelope. The marker is runtime provenance, not image admission: this release
+does not verify its signature or protected filesystem contents.
+
+In that mode, Ayni uses `AYNI_SOURCE_ROOT` when set, otherwise its current
+working directory. The selected source must provide regular `.ayni.toml` and
+`.ayni.lock` files, and the lock must still describe the mounted source. Its
+fingerprint must match the runtime marker. Check evidence includes the marker
+digest and certificate claims, while source files remain untouched so a
+read-only mount is supported:
+
+```sh
+docker run -v "$PWD:/workspace:ro" -w /workspace \
+  registry/project-env@sha256:... ayni check
+```
+
+When the marker is absent, `ayni check` retains the ordinary local managed
+execution behavior. Image pull, publication, lifecycle, and certificate
+verification remain external-runner responsibilities.
