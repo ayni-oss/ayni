@@ -87,7 +87,7 @@ The command chooses scope; Ayni and the adapter choose the exact signal command.
 
 At launch, Ayni validates the current lock and image, selects the language target, mounts the checkout, runs the adapter command, parses its output, applies the contract thresholds, and writes normalized evidence.
 
-Use the explicit `--host` option on these commands only when managed execution is not yet available for the repository. Host execution preserves the contract and evidence model but relies on user-installed tools.
+CI uses these commands with their managed default. During development, use the explicit `--host` option (for example, `ayni check --host`) so the checkout runs with its locally installed tools. Host execution preserves the contract and evidence model but relies on user-installed tools.
 
 ## Advanced development access is different
 

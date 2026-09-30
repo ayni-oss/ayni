@@ -90,11 +90,11 @@ ayni env prune
 ayni env prune --apply --current
 ```
 
-`check`, `verify`, and `impact run` launch managed execution directly. The
-explicit `--host` mode is useful for evaluation and compatibility, but its
-runtime and tool versions are not locked. Supported project shapes and the
-complete lifecycle are documented in the [quickstart](docs/getting-started/quickstart.md)
-and [managed environment guide](docs/product/environments.md).
+CI runs `check`, `verify`, and `impact run` with their managed default. During
+development, run the same commands with explicit `--host` execution (for
+example, `ayni check --host`); its runtime and tool versions are not locked.
+Supported project shapes and the complete lifecycle are documented in the
+[quickstart](docs/getting-started/quickstart.md) and [managed environment guide](docs/product/environments.md).
 
 Use focused verification for the inner repair loop:
 

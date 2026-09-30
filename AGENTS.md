@@ -180,7 +180,8 @@ Use `ayni verify list` to list exact commands from the last repository artifact,
 then rerun the exact verification command supplied by a finding. For a change-scoped
 loop, run `ayni impact show --base <revision>` and then `ayni impact run`,
 copying the same explicit base. Impact success is not repository completion;
-run one unscoped `ayni check` at the caller's completion boundary.
+during development, run one unscoped `ayni check --host` at the caller's
+completion boundary.
 
 Run quality commands directly; never wrap them in `ayni env run`. Treat `env
 shell` and `env run` as intentional advanced access because they mount the
@@ -189,10 +190,11 @@ checkout read-write and do not produce normalized quality evidence.
 Treat incomplete or missing required artifacts as failure, and never loosen
 `.ayni.toml` merely to silence a finding.
 
-Use the full repository analysis as the completion gate:
+During development, use explicit host execution for the full repository
+completion gate; CI runs the managed default:
 
 ```sh
-ayni check
+ayni check --host
 ```
 
 A non-zero exit code means the quality contract was not satisfied: a signal
@@ -201,7 +203,6 @@ Read `.ayni/last/signals.json` when present for typed completion and target
 accounting. For each finding, rerun its exact verification command and repair
 the listed offenders.
 <!-- AYNI:END -->
-
 ## Public-project boundaries and CNCF-readiness audit
 
 Treat CNCF readiness as a continuous, evidence-based audit—not a status to

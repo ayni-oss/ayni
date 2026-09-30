@@ -45,11 +45,12 @@ honest selector matrix; unsupported selectors fail before tool invocation.
 cargo run -p ayni-cli -- verify test --language rust --package ayni-cli
 ```
 
-Do not use focused evidence as repository completion evidence. An unscoped
-`cargo run -p ayni-cli -- check --config ./.ayni.toml` is the repository gate
-and sole writer of `.ayni/last/signals.json`; use `--host` only as the explicit
-escape hatch. Focused runs write only `.ayni/verify/last/signals.json`. Re-run the exact
-`verification.command` attached to a finding when one is available.
+Do not use focused evidence as repository completion evidence. During
+development, the repository gate and sole writer of `.ayni/last/signals.json`
+is `cargo run -p ayni-cli -- check --host --config ./.ayni.toml`; CI runs the
+managed default without `--host`. Focused runs write only
+`.ayni/verify/last/signals.json`. Re-run the exact `verification.command`
+attached to a finding when one is available.
 
 ## Documentation
 
