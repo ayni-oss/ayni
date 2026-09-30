@@ -381,25 +381,19 @@ impl EnvironmentLock {
             schema_version,
         } = parts;
         let deserializing = schema_version.is_some();
-        if let Some(schema_version) = schema_version
-            && schema_version != ENVIRONMENT_LOCK_SCHEMA_VERSION
-        {
-            return Err(EnvironmentPlanError::UnsupportedLockSchema(schema_version));
-        }
-        normalize_provisioning_base(&mut provisioning_base)?;
-        normalize_certificate_trust_policy(&certificate_trust_policy)?;
-        normalize_lock_header(
+        normalize_lock_parts(
+            &schema_version,
             &mut repository,
             &mut ayni_version,
             &mut mise_version,
+            &mut provisioning_base,
+            &certificate_trust_policy,
             &mut platforms,
+            &mut targets,
+            &mut tools,
+            &mut debian_packages,
+            resources,
         )?;
-        normalize_locked_targets(&mut targets)?;
-        normalize_locked_mise_tools(&mut tools)?;
-        normalize_locked_debian_packages(&mut debian_packages)?;
-        resources
-            .validate()
-            .map_err(EnvironmentPlanError::InvalidResourceLimits)?;
         let mut lock = Self {
             schema_version: ENVIRONMENT_LOCK_SCHEMA_VERSION.to_owned(),
             recipe_version: ENVIRONMENT_LOCK_RECIPE_VERSION.to_owned(),
@@ -520,6 +514,38 @@ impl EnvironmentLock {
     pub fn certificate_trust_policy(&self) -> &LockedCertificateTrustPolicy {
         &self.certificate_trust_policy
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn normalize_lock_parts(
+    schema_version: &Option<String>,
+    repository: &mut LockedRepositoryIdentity,
+    ayni_version: &mut String,
+    mise_version: &mut String,
+    provisioning_base: &mut ProvisioningBase,
+    certificate_trust_policy: &LockedCertificateTrustPolicy,
+    platforms: &mut Vec<TargetPlatform>,
+    targets: &mut Vec<LockedTargetEnvironment>,
+    tools: &mut Vec<LockedMiseTool>,
+    debian_packages: &mut Vec<LockedDebianPackage>,
+    resources: EnvironmentResourceLimits,
+) -> Result<(), EnvironmentPlanError> {
+    if let Some(schema_version) = schema_version
+        && schema_version != ENVIRONMENT_LOCK_SCHEMA_VERSION
+    {
+        return Err(EnvironmentPlanError::UnsupportedLockSchema(
+            schema_version.clone(),
+        ));
+    }
+    normalize_provisioning_base(provisioning_base)?;
+    normalize_certificate_trust_policy(certificate_trust_policy)?;
+    normalize_lock_header(repository, ayni_version, mise_version, platforms)?;
+    normalize_locked_targets(targets)?;
+    normalize_locked_mise_tools(tools)?;
+    normalize_locked_debian_packages(debian_packages)?;
+    resources
+        .validate()
+        .map_err(EnvironmentPlanError::InvalidResourceLimits)
 }
 
 fn normalize_certificate_trust_policy(
