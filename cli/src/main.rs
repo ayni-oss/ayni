@@ -91,25 +91,27 @@ fn dispatch_analysis(operation: application::Operation) -> ExitCode {
         Operation::ImpactRun(operation) if operation.execution_mode == ExecutionMode::Host => {
             impact::run(operation)
         }
-        Operation::Check(operation) => match prebuilt_runtime::discover() {
-            Ok(Some(runtime)) => {
-                match prebuilt_runtime::prepare_check(operation, &runtime, &build_registry())
-                    .and_then(|operation| {
-                        prebuilt_runtime::activate(&runtime)?;
-                        Ok(dispatch_host_check(operation))
-                    }) {
-                    Ok(code) => code,
-                    Err(error) => crate::application_error::render_error(error),
-                }
-            }
-            Ok(None) => environment_backend::check(operation, &build_registry()),
-            Err(error) => crate::application_error::render_error(error),
-        },
+        Operation::Check(operation) => dispatch_check_operation(operation),
         Operation::Verify(operation) => environment_backend::verify(operation, &build_registry()),
         Operation::ImpactRun(operation) => {
             environment_backend::impact_run(operation, &build_registry())
         }
         _ => unreachable!("dispatch_analysis received a non-analysis operation"),
+    }
+}
+
+fn dispatch_check_operation(operation: application::CheckOperation) -> ExitCode {
+    match prebuilt_runtime::discover() {
+        Ok(Some(runtime)) => {
+            prebuilt_runtime::prepare_check(operation, &runtime, &build_registry())
+                .and_then(|operation| {
+                    prebuilt_runtime::activate(&runtime)?;
+                    Ok(dispatch_host_check(operation))
+                })
+                .unwrap_or_else(crate::application_error::render_error)
+        }
+        Ok(None) => environment_backend::check(operation, &build_registry()),
+        Err(error) => crate::application_error::render_error(error),
     }
 }
 

@@ -48,16 +48,7 @@ pub(crate) fn build_artifact_metadata_for_command(
         .map(|target| target.run_context.scope.clone());
     let prebuilt_runtime = prebuilt_runtime_identity()?;
     let managed = managed_execution_active() || prebuilt_runtime.is_some();
-    let mut tool_versions = if prebuilt_runtime.is_some() {
-        Vec::new()
-    } else if managed {
-        let value = std::env::var(MANAGED_TOOL_VERSIONS)
-            .map_err(|_| String::from("managed execution is missing tool-version provenance"))?;
-        serde_json::from_str::<Vec<ArtifactToolVersion>>(&value)
-            .map_err(|error| format!("managed tool-version provenance is invalid: {error}"))?
-    } else {
-        Vec::new()
-    };
+    let mut tool_versions = managed_tool_versions(managed, prebuilt_runtime.is_some())?;
     tool_versions.sort();
     tool_versions.dedup();
 
@@ -81,18 +72,39 @@ pub(crate) fn build_artifact_metadata_for_command(
             ExecutionMode::Host
         },
         contract_digest: file_fingerprint(config_path)?,
-        environment_lock_fingerprint: match &prebuilt_runtime {
-            Some(runtime) => Some(runtime.certificate.certificate.lock_fingerprint.clone()),
-            None if managed => Some(
-                std::env::var(MANAGED_LOCK_FINGERPRINT)
-                    .map_err(|_| String::from("managed execution is missing lock provenance"))?,
-            ),
-            None => None,
-        },
+        environment_lock_fingerprint: runtime_lock_fingerprint(&prebuilt_runtime, managed)?,
         prebuilt_runtime,
         source_fingerprint: source_fingerprint(workspace_root)?,
         tool_versions,
     })
+}
+
+fn managed_tool_versions(
+    managed: bool,
+    prebuilt: bool,
+) -> Result<Vec<ArtifactToolVersion>, String> {
+    if !managed || prebuilt {
+        return Ok(Vec::new());
+    }
+    let value = std::env::var(MANAGED_TOOL_VERSIONS)
+        .map_err(|_| String::from("managed execution is missing tool-version provenance"))?;
+    serde_json::from_str(&value)
+        .map_err(|error| format!("managed tool-version provenance is invalid: {error}"))
+}
+
+fn runtime_lock_fingerprint(
+    prebuilt_runtime: &Option<PrebuiltRuntimeIdentity>,
+    managed: bool,
+) -> Result<Option<String>, String> {
+    match prebuilt_runtime {
+        Some(runtime) => Ok(Some(
+            runtime.certificate.certificate.lock_fingerprint.clone(),
+        )),
+        None if managed => std::env::var(MANAGED_LOCK_FINGERPRINT)
+            .map(Some)
+            .map_err(|_| String::from("managed execution is missing lock provenance")),
+        None => Ok(None),
+    }
 }
 
 fn prebuilt_runtime_identity() -> Result<Option<PrebuiltRuntimeIdentity>, String> {
