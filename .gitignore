@@ -23,6 +23,7 @@ target
 # Agentic
 .claude/
 .opencode/sessions
+.worktrees/
 
 # Ayni
 **/*.rs.bk

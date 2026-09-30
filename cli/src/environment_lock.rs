@@ -127,11 +127,21 @@ fn create_lock(
     )
     .map_err(LockError::from)?;
     let contract_path = contract_path(operation, repo_root)?;
+    let show = EnvShowOperation {
+        config: operation.config.clone(),
+        repo_root: operation.repo_root.clone(),
+        output: OutputFormat::Json,
+    };
+    let (_, _, _, policy) = environment::load_context(&show)?;
+    let certificate_trust_policy = policy
+        .environment_certificate_trust_policy()
+        .map_err(LockError::environment)?;
     EnvironmentLock::from_resolved_plan(
         resolved_plan,
         env!("CARGO_PKG_VERSION"),
         mise_version,
         provisioning_base,
+        &certificate_trust_policy,
         contract_path,
         source_digests,
     )

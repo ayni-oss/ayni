@@ -161,6 +161,9 @@ packages = ["libssl-dev", "protobuf-compiler=3.21.12+ABC-3"]
 access = "socket"
 network = "bridge"
 
+[environment.certificate.trusted_keys]
+release-2026 = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+
 [environment.resources]
 cpus = 6
 memory_mib = 12288
@@ -184,6 +187,12 @@ nofile = 16384
     assert_eq!(
         policy.environment_capabilities().network,
         NetworkAccess::Bridge
+    );
+    assert!(
+        !policy
+            .environment_certificate_trust_policy()
+            .expect("certificate trust policy")
+            .is_empty()
     );
     assert_eq!(policy.environment_resource_limits().cpus, 6);
     assert_eq!(policy.environment_resource_limits().memory_mib, 12_288);

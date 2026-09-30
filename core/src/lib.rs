@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod comparison;
 pub mod environment;
 pub mod environment_adapter;
+pub mod environment_certificate;
 mod environment_lock;
 pub mod environment_preparation;
 mod environment_provisioning;
@@ -47,6 +48,10 @@ pub use environment::{
     ToolInstallationScope, VersionRequirement,
 };
 pub use environment_adapter::{EnvironmentCapability, EnvironmentDiscoveryRequest};
+pub use environment_certificate::{
+    CertificateError, ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION, EnvironmentCertificate,
+    EnvironmentCertificateEnvelope, EnvironmentCertificateTrustPolicy,
+};
 pub use environment_lock::{
     ENVIRONMENT_LOCK_RECIPE_VERSION, ENVIRONMENT_LOCK_SCHEMA_VERSION, EnvironmentLock,
     LockedDebianPackage, LockedDependencyLock, LockedMiseTool, LockedPackageManager,
