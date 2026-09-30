@@ -4,8 +4,8 @@ use super::{
     target_environment,
 };
 use crate::image::ImagePlan;
-use crate::{BackendError, concise_output};
-use ayni_adapters_common::exec::{DEFAULT_TOOL_TIMEOUT, run_command};
+use crate::{BackendError, concise_output, oci_process, run_oci_command};
+use ayni_adapters_common::exec::DEFAULT_TOOL_TIMEOUT;
 use ayni_core::{DependencyPreparationPlan, EnvironmentLock, PreparationOutputMode};
 use std::collections::BTreeMap;
 #[cfg(unix)]
@@ -17,7 +17,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 pub(super) fn materialize_outputs(
@@ -752,7 +752,7 @@ fn copy_container_archive(
     destination: &Path,
     description: &str,
 ) -> Result<(), BackendError> {
-    let mut copied = Command::new(engine_name(engine))
+    let mut copied = oci_process(engine_name(engine))
         .current_dir(root)
         .args(["cp", &format!("{container}:{source}"), "-"])
         .stdout(Stdio::piped())
@@ -849,7 +849,7 @@ fn create_materialization_container(
     image_tag: &str,
     description: &str,
 ) -> Result<String, BackendError> {
-    let created = run_command(
+    let created = run_oci_command(
         root,
         engine_name(engine),
         &["create".into(), image_tag.into()],
@@ -890,7 +890,7 @@ fn remove_materialization_container(
     engine: Engine,
     container: &str,
 ) -> Result<(), BackendError> {
-    let removed = run_command(
+    let removed = run_oci_command(
         root,
         engine_name(engine),
         &["rm".into(), container.into()],
@@ -1239,13 +1239,12 @@ fn run_materialization_commands(request: MaterializationRequest<'_>) -> Result<(
         );
         args.push(command.program.clone());
         args.extend(command.args.clone());
-        let result = run_command(&cwd, engine_name(engine), &args, DEFAULT_TOOL_TIMEOUT).map_err(
-            |error| {
+        let result = run_oci_command(&cwd, engine_name(engine), &args, DEFAULT_TOOL_TIMEOUT)
+            .map_err(|error| {
                 BackendError::execution(format!(
                     "failed to run offline dependency materialization: {error}"
                 ))
-            },
-        )?;
+            })?;
         if !result.status.success() {
             let stderr = concise_output(&result.stderr);
             let diagnostics = if stderr == "command failed without diagnostics" {

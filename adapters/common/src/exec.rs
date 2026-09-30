@@ -425,6 +425,10 @@ fn spawn_command(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Signing material is host-only and must never leak to tools or OCI clients.
+    command
+        .env_remove("AYNI_ENV_CERTIFICATE_SIGNING_KEY")
+        .env_remove("AYNI_ENV_CERTIFICATE_KEY_ID");
     #[cfg(test)]
     configure_test_profile_discard(&mut command);
     if settings.environment.contains_key(DISCARD_LLVM_PROFILE_ENV) {

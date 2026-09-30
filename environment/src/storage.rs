@@ -3,8 +3,7 @@ use crate::image::{
     IMAGE_OWNER_VALUE, IMAGE_PLATFORM_LABEL, IMAGE_PREPARATION_LABEL, IMAGE_SCHEMA_LABEL,
     IMAGE_SCHEMA_VERSION, ImagePlan, image_plan_with_preparation,
 };
-use crate::{BackendError, concise_output, read_lock};
-use ayni_adapters_common::exec::run_command;
+use crate::{BackendError, concise_output, read_lock, run_oci_command};
 use ayni_core::{DependencyPreparationPlan, EnvironmentLock};
 use serde::Serialize;
 use serde_json::Value;
@@ -715,7 +714,7 @@ fn run_engine(
     engine: crate::Engine,
     args: &[String],
 ) -> Result<std::process::Output, BackendError> {
-    run_command(root, engine_name(engine), args, COMMAND_TIMEOUT).map_err(|error| {
+    run_oci_command(root, engine_name(engine), args, COMMAND_TIMEOUT).map_err(|error| {
         BackendError::execution(format!(
             "failed to run {} storage command: {error}",
             engine_name(engine)

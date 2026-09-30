@@ -144,6 +144,13 @@ jobs:
           curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null
           python3 scripts/ci/candidate.py import --directory .ayni/ci-candidate --source "$SOURCE" --platform "$PLATFORM" --run-id "$GITHUB_RUN_ID"
 
+      - name: Generate ephemeral environment signing material
+        run: |
+          signing_key=$(openssl rand -hex 32)
+          echo "::add-mask::$signing_key"
+          echo "AYNI_ENV_CERTIFICATE_SIGNING_KEY=$signing_key" >> "$GITHUB_ENV"
+          echo "AYNI_ENV_CERTIFICATE_KEY_ID=pr-validation-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+
       - name: Run Ayni
         run: |
           set +e

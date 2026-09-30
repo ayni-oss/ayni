@@ -98,6 +98,8 @@ fn command(root: &TempDir, args: &[&str]) -> Command {
     .unwrap();
     command.env("PATH", path);
     command.env_remove("MISE_GITHUB_TOKEN");
+    command.env("AYNI_ENV_CERTIFICATE_SIGNING_KEY", "07".repeat(32));
+    command.env("AYNI_ENV_CERTIFICATE_KEY_ID", "test-release-key");
     command
 }
 #[test]
@@ -178,6 +180,7 @@ fn build_and_run_use_a_fake_docker_without_baking_the_checkout() {
     let build_arguments = fs::read_to_string(&record).unwrap();
     assert!(build_arguments.contains("--secret\nid=MISE_GITHUB_TOKEN,env=MISE_GITHUB_TOKEN"));
     assert!(!build_arguments.contains("fixture-secret-must-not-leak"));
+    assert!(!build_arguments.contains(&"07".repeat(32)));
     let doctor = command(&root, &["env", "doctor", "--repo-root"])
         .arg(root.path())
         .output()
@@ -193,7 +196,30 @@ fn build_and_run_use_a_fake_docker_without_baking_the_checkout() {
             .contains("RUN --mount=type=secret,id=MISE_GITHUB_TOKEN,uid=10001,gid=10001,mode=0400")
     );
     assert!(!dockerfile.contains("fixture-secret-must-not-leak"));
+    assert!(!dockerfile.contains(&"07".repeat(32)));
     assert!(dockerfile.contains("MISE_AUTO_INSTALL=0"));
+    assert!(!dockerfile.contains("dev.ayni.environment.owner=\"ayni\""));
+    let certified_dockerfile =
+        fs::read_to_string(root.path().join("bin/executor-certified.Dockerfile")).unwrap();
+    assert!(certified_dockerfile.starts_with("FROM ayni-env-stage:"));
+    assert!(
+        certified_dockerfile.contains("COPY --chown=0:0 certificate.json /etc/ayni/runtime.json")
+    );
+    assert!(certified_dockerfile.contains(
+        "COPY --chown=0:0 protected-content.manifest /etc/ayni/protected-content.manifest"
+    ));
+    assert!(certified_dockerfile.contains(
+        "/usr/bin/chmod 0444 /etc/ayni/runtime.json /etc/ayni/protected-content.manifest"
+    ));
+    assert!(certified_dockerfile.contains("dev.ayni.environment.owner=\"ayni\""));
+    assert!(certified_dockerfile.contains("dev.ayni.environment.certificate-schema=\"1\""));
+    assert!(
+        certified_dockerfile
+            .contains("dev.ayni.environment.certificate-key-id=\"test-release-key\"")
+    );
+    assert!(certified_dockerfile.contains("dev.ayni.environment.protected-content-root=\"sha256:"));
+    assert!(certified_dockerfile.contains("USER 10001:10001"));
+    assert!(!certified_dockerfile.contains(&"07".repeat(32)));
     assert!(dockerfile.contains(
         "RUN [\"rustup\",\"component\",\"add\",\"--toolchain\",\"1.92.0\",\"llvm-tools-preview\"]"
     ));
@@ -907,6 +933,14 @@ fn five_language_build_composes_preparation_without_staging_source() {
             fs::read(root.path().join(".ayni/last/signals.json")).unwrap()
         )
     );
+    assert_eq!(
+        evidence["build"]["certificate_digest"],
+        build["certificate_digest"]
+    );
+    assert_eq!(
+        evidence["build"]["protected_content_root"],
+        build["protected_content_root"]
+    );
     assert_executor_build_contract(&root);
     assert!(run.contains("/workspace/.ayni/quality/kotlin/6b6f746c696e"));
     assert!(run.contains("target=/opt/ayni/checkout,readonly"));
@@ -1162,12 +1196,94 @@ fn assert_executor_build_contract(root: &TempDir) {
     let path = root.path().join(".ayni/environment/build.json");
     let original_bytes = fs::read(&path).unwrap();
     let original: serde_json::Value = serde_json::from_slice(&original_bytes).unwrap();
+    assert_eq!(original["schema_version"], "2");
     assert_eq!(original["recipe_version"], "1");
+    assert_eq!(original["certificate_schema_version"], "1");
+    assert_eq!(original["certificate_key_id"], "test-release-key");
+    assert!(
+        original["protected_content_root"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert!(
+        original["certificate_digest"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
     assert!(
         original["executor"]["executable_digest"]
             .as_str()
             .unwrap()
             .starts_with("sha256:")
+    );
+    let certificate_path = root.path().join("bin/executor-certificate.json");
+    let manifest_path = root.path().join("bin/executor-protected-content.manifest");
+    let original_certificate = fs::read(&certificate_path).unwrap();
+    let original_manifest = fs::read(&manifest_path).unwrap();
+    assert!(
+        !original_certificate
+            .windows(64)
+            .any(|window| window == "07".repeat(32).as_bytes())
+    );
+    assert!(
+        !original_manifest
+            .windows(64)
+            .any(|window| window == "07".repeat(32).as_bytes())
+    );
+    assert!(
+        !original_bytes
+            .windows(64)
+            .any(|window| window == "07".repeat(32).as_bytes())
+    );
+    let certificate: serde_json::Value = serde_json::from_slice(&original_certificate).unwrap();
+    assert_eq!(certificate["key_id"], original["certificate_key_id"]);
+    assert_eq!(
+        certificate["certificate"]["lock_fingerprint"],
+        original["environment_fingerprint"]
+    );
+    assert_eq!(
+        certificate["certificate"]["platform"],
+        original["executor"]["platform"]
+    );
+    assert_eq!(
+        certificate["certificate"]["ayni_version"],
+        env!("CARGO_PKG_VERSION")
+    );
+    let parsed_lock: ayni_core::EnvironmentLock = serde_json::from_slice(&lock).unwrap();
+    assert_eq!(
+        certificate["certificate"]["tool_inventory_digest"],
+        ayni_environment::image_plan(&parsed_lock)
+            .unwrap()
+            .installation_digest
+    );
+    assert_eq!(
+        certificate["certificate"]["protected_content_root"],
+        original["protected_content_root"]
+    );
+    assert_eq!(
+        ayni_core::sha256_fingerprint(&original_certificate),
+        original["certificate_digest"]
+    );
+    assert_eq!(
+        ayni_core::sha256_fingerprint(&original_manifest),
+        original["protected_content_root"]
+    );
+    let labels_path = root.path().join("bin/executor-image.labels.json");
+    let original_labels = fs::read(&labels_path).unwrap();
+    let labels: serde_json::Value = serde_json::from_slice(&original_labels).unwrap();
+    assert_eq!(
+        labels["dev.ayni.environment.certificate-schema"],
+        original["certificate_schema_version"]
+    );
+    assert_eq!(
+        labels["dev.ayni.environment.certificate-key-id"],
+        original["certificate_key_id"]
+    );
+    assert_eq!(
+        labels["dev.ayni.environment.protected-content-root"],
+        original["protected_content_root"]
     );
     let doctor = || {
         command(root, &["env", "doctor", "--repo-root"])
@@ -1176,6 +1292,28 @@ fn assert_executor_build_contract(root: &TempDir) {
             .unwrap()
     };
     assert!(doctor().status.success());
+
+    let mut altered_labels = labels.clone();
+    altered_labels["dev.ayni.environment.protected-content-root"] =
+        serde_json::json!(format!("sha256:{}", "9".repeat(64)));
+    fs::write(&labels_path, altered_labels.to_string()).unwrap();
+    let mismatched_labels = doctor();
+    assert_eq!(mismatched_labels.status.code(), Some(3));
+    assert!(String::from_utf8_lossy(&mismatched_labels.stderr).contains("stale"));
+    fs::write(&labels_path, &original_labels).unwrap();
+
+    fs::write(&certificate_path, b"{}\n").unwrap();
+    let malformed_certificate = doctor();
+    assert_eq!(malformed_certificate.status.code(), Some(3));
+    assert!(String::from_utf8_lossy(&malformed_certificate.stderr).contains("certificate"));
+    fs::write(&certificate_path, &original_certificate).unwrap();
+
+    fs::write(&manifest_path, b"{\"schema_version\":\"1\"}\n").unwrap();
+    let mismatched_manifest = doctor();
+    assert_eq!(mismatched_manifest.status.code(), Some(3));
+    assert!(String::from_utf8_lossy(&mismatched_manifest.stderr).contains("manifest"));
+    fs::write(&manifest_path, &original_manifest).unwrap();
+
     let mut altered = original.clone();
     altered["image_id"] = serde_json::json!(format!("sha256:{}", "0".repeat(64)));
     fs::write(&path, altered.to_string()).unwrap();
@@ -1202,7 +1340,7 @@ fn assert_executor_build_contract(root: &TempDir) {
         "{}",
         String::from_utf8_lossy(&built.stderr)
     );
-    let replaced_bytes = fs::read(&path).unwrap();
+    let mut replaced_bytes = fs::read(&path).unwrap();
     let replaced: serde_json::Value = serde_json::from_slice(&replaced_bytes).unwrap();
     assert_ne!(original["image_tag"], replaced["image_tag"]);
     assert_ne!(
@@ -1225,6 +1363,160 @@ fn assert_executor_build_contract(root: &TempDir) {
     assert!(reused.status.success());
     assert!(String::from_utf8_lossy(&reused.stdout).starts_with("current "));
     assert_eq!(replaced_bytes, fs::read(&path).unwrap());
+    assert_eq!(original_certificate, fs::read(&certificate_path).unwrap());
+    assert_eq!(original_manifest, fs::read(&manifest_path).unwrap());
+
+    let rotated = command(root, &["env", "build", "--repo-root"])
+        .arg(root.path())
+        .args(["--executor-image", &replacement])
+        .env("AYNI_ENV_CERTIFICATE_SIGNING_KEY", "08".repeat(32))
+        .output()
+        .unwrap();
+    assert!(rotated.status.success());
+    assert!(String::from_utf8_lossy(&rotated.stdout).starts_with("built "));
+    let rotated_record: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        rotated_record["certificate_key_id"],
+        replaced["certificate_key_id"]
+    );
+    assert_eq!(
+        rotated_record["protected_content_root"],
+        replaced["protected_content_root"]
+    );
+    assert_ne!(
+        rotated_record["certificate_digest"],
+        replaced["certificate_digest"]
+    );
+    assert_ne!(original_certificate, fs::read(&certificate_path).unwrap());
+
+    let restored = command(root, &["env", "build", "--repo-root"])
+        .arg(root.path())
+        .args(["--executor-image", &replacement])
+        .output()
+        .unwrap();
+    assert!(restored.status.success());
+    assert!(String::from_utf8_lossy(&restored.stdout).starts_with("built "));
+    let restored_bytes = fs::read(&path).unwrap();
+    let restored_record: serde_json::Value = serde_json::from_slice(&restored_bytes).unwrap();
+    assert_eq!(
+        restored_record["certificate_key_id"],
+        replaced["certificate_key_id"]
+    );
+    assert_eq!(
+        restored_record["protected_content_root"],
+        replaced["protected_content_root"]
+    );
+    assert_eq!(
+        restored_record["certificate_digest"],
+        replaced["certificate_digest"]
+    );
+    replaced_bytes = restored_bytes;
+    assert_eq!(original_certificate, fs::read(&certificate_path).unwrap());
+
+    for missing_variable in [
+        "AYNI_ENV_CERTIFICATE_SIGNING_KEY",
+        "AYNI_ENV_CERTIFICATE_KEY_ID",
+    ] {
+        let failed = command(root, &["env", "build", "--repo-root"])
+            .arg(root.path())
+            .env_remove(missing_variable)
+            .output()
+            .unwrap();
+        assert!(!failed.status.success());
+        assert!(String::from_utf8_lossy(&failed.stderr).contains(missing_variable));
+        assert_eq!(replaced_bytes, fs::read(&path).unwrap());
+    }
+
+    let malformed_key = command(root, &["env", "build", "--repo-root"])
+        .arg(root.path())
+        .env("AYNI_ENV_CERTIFICATE_SIGNING_KEY", "AA".repeat(32))
+        .output()
+        .unwrap();
+    assert!(!malformed_key.status.success());
+    assert!(String::from_utf8_lossy(&malformed_key.stderr).contains("lowercase hexadecimal"));
+    assert_eq!(replaced_bytes, fs::read(&path).unwrap());
+
+    let malformed_key_id = command(root, &["env", "build", "--repo-root"])
+        .arg(root.path())
+        .env("AYNI_ENV_CERTIFICATE_KEY_ID", "invalid key id")
+        .output()
+        .unwrap();
+    assert!(!malformed_key_id.status.success());
+    assert!(String::from_utf8_lossy(&malformed_key_id.stderr).contains("must contain only"));
+    assert_eq!(replaced_bytes, fs::read(&path).unwrap());
+
+    for (hook, diagnostic, digest) in [
+        (
+            "AYNI_TEST_MANIFEST_FAILURE",
+            "generate protected-content file hashes",
+            '5',
+        ),
+        (
+            "AYNI_TEST_CERTIFIED_BUILD_FAILURE",
+            "certificate installation failed",
+            '6',
+        ),
+        (
+            "AYNI_TEST_CERTIFICATE_OWNER_FAILURE",
+            "root:root regular files with mode 0444",
+            '7',
+        ),
+        (
+            "AYNI_TEST_CERTIFICATE_MODE_FAILURE",
+            "root:root regular files with mode 0444",
+            '8',
+        ),
+    ] {
+        let executor = format!(
+            "ghcr.io/ayni-oss/ayni-env:failure@sha256:{}",
+            digest.to_string().repeat(64)
+        );
+        let failed = command(root, &["env", "build", "--repo-root"])
+            .arg(root.path())
+            .args(["--executor-image", &executor])
+            .env(hook, "1")
+            .output()
+            .unwrap();
+        assert!(!failed.status.success());
+        assert!(
+            String::from_utf8_lossy(&failed.stderr).contains(diagnostic),
+            "{}",
+            String::from_utf8_lossy(&failed.stderr)
+        );
+        assert_eq!(replaced_bytes, fs::read(&path).unwrap());
+    }
+
+    let published_id_path = root.path().join("bin/executor-image.id");
+    let published_labels_path = root.path().join("bin/executor-image.labels.json");
+    let published_id = fs::read(&published_id_path).unwrap();
+    let published_labels = fs::read(&published_labels_path).unwrap();
+    let published_certificate = fs::read(&certificate_path).unwrap();
+    let published_manifest = fs::read(&manifest_path).unwrap();
+    let record_directory = path.parent().unwrap();
+    let writable_permissions = fs::metadata(record_directory).unwrap().permissions();
+    let mut read_only_permissions = writable_permissions.clone();
+    read_only_permissions.set_mode(0o500);
+    fs::set_permissions(record_directory, read_only_permissions).unwrap();
+    let persistence_failure = command(root, &["env", "build", "--repo-root"])
+        .arg(root.path())
+        .args(["--executor-image", &replacement])
+        .env("AYNI_ENV_CERTIFICATE_KEY_ID", "persistence-failure-key")
+        .output()
+        .unwrap();
+    fs::set_permissions(record_directory, writable_permissions).unwrap();
+    assert!(!persistence_failure.status.success());
+    assert!(
+        String::from_utf8_lossy(&persistence_failure.stderr).contains("Permission denied"),
+        "{}",
+        String::from_utf8_lossy(&persistence_failure.stderr)
+    );
+    assert_eq!(replaced_bytes, fs::read(&path).unwrap());
+    assert_eq!(published_id, fs::read(&published_id_path).unwrap());
+    assert_eq!(published_labels, fs::read(&published_labels_path).unwrap());
+    assert_eq!(published_certificate, fs::read(&certificate_path).unwrap());
+    assert_eq!(published_manifest, fs::read(&manifest_path).unwrap());
+
     for unavailable in [
         "mutable-tag".to_string(),
         format!("registry.example/missing@sha256:{}", "d".repeat(64)),

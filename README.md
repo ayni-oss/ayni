@@ -70,7 +70,8 @@ ayni contract show
 ```
 
 For a supported repository, resolve and build the managed environment before
-running the complete repository contract:
+running the complete repository contract. `env build` requires the certificate
+signing variables documented in [Managed environments](docs/product/environments.md#build-and-dependency-preparation).
 
 ```sh
 ayni env show

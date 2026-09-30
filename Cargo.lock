@@ -227,6 +227,7 @@ version = "0.13.0"
 dependencies = [
  "ayni-adapters-common",
  "ayni-core",
+ "ed25519-dalek",
  "libc",
  "serde",
  "serde_json",

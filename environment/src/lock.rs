@@ -1,5 +1,5 @@
+use crate::run_oci_command;
 use crate::{BackendError, concise_output};
-use ayni_adapters_common::exec::run_command;
 use ayni_core::{
     Architecture, EnvironmentLock, EnvironmentPlan, ProvisioningBase, sha256_fingerprint,
 };
@@ -54,7 +54,7 @@ pub(crate) fn inspect_remote_digest(reference: &str) -> Result<String, BackendEr
         "--format".to_owned(),
         "{{json .Manifest}}".to_owned(),
     ];
-    let output = run_command(&cwd, "docker", &args, COMMAND_TIMEOUT).map_err(|error| {
+    let output = run_oci_command(&cwd, "docker", &args, COMMAND_TIMEOUT).map_err(|error| {
         BackendError::environment(format!(
             "failed to resolve immutable executor image {reference}: {error}; install Docker Buildx or pass `--executor-image <reference>@sha256:<digest>`"
         ))

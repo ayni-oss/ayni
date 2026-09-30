@@ -89,6 +89,10 @@ The plan explains missing or unsupported runtime inputs before anything is locke
 
 ## 5. Lock and build the managed environment
 
+Before building, provide `AYNI_ENV_CERTIFICATE_SIGNING_KEY` and
+`AYNI_ENV_CERTIFICATE_KEY_ID` as described in the
+[environment build contract](/product/environments#build-and-dependency-preparation).
+
 ```sh
 ayni env lock
 ayni env build
