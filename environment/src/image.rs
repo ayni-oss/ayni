@@ -513,10 +513,11 @@ mod tests {
             &lock.repository().contract_digest,
             &format!("sha256:{}", "c".repeat(64)),
         );
-        let document = format!("{}}}", updated.rsplit_once(",\"fingerprint\":").unwrap().0).replace(
-            ",\"capabilities\":",
-            ",\"tools\":[],\"debian_packages\":[],\"capabilities\":",
-        );
+        let document = format!("{}}}", updated.rsplit_once(",\"fingerprint\":").unwrap().0)
+            .replace(
+                ",\"capabilities\":",
+                ",\"tools\":[],\"debian_packages\":[],\"capabilities\":",
+            );
         let fingerprint = ayni_core::sha256_fingerprint(document.as_bytes());
         let updated: EnvironmentLock =
             serde_json::from_str(&updated.replace(lock.fingerprint(), &fingerprint)).unwrap();
@@ -543,10 +544,11 @@ mod tests {
             &lock.provisioning_base().digest,
             &format!("sha256:{}", "d".repeat(64)),
         );
-        let document = format!("{}}}", updated.rsplit_once(",\"fingerprint\":").unwrap().0).replace(
-            ",\"capabilities\":",
-            ",\"tools\":[],\"debian_packages\":[],\"capabilities\":",
-        );
+        let document = format!("{}}}", updated.rsplit_once(",\"fingerprint\":").unwrap().0)
+            .replace(
+                ",\"capabilities\":",
+                ",\"tools\":[],\"debian_packages\":[],\"capabilities\":",
+            );
         let fingerprint = ayni_core::sha256_fingerprint(document.as_bytes());
         let updated: EnvironmentLock =
             serde_json::from_str(&updated.replace(lock.fingerprint(), &fingerprint)).unwrap();
