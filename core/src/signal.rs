@@ -1,3 +1,4 @@
+use crate::environment_certificate::EnvironmentCertificateEnvelope;
 use crate::language::Language;
 use crate::runtime::Scope;
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,16 @@ pub struct ArtifactToolVersion {
 /// Serializable inputs supplied by the orchestration layer when building an artifact.
 /// Core deliberately does not read the clock, environment, or filesystem for these values.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrebuiltRuntimeIdentity {
+    pub metadata_path: String,
+    pub metadata_digest: String,
+    pub certificate: EnvironmentCertificateEnvelope,
+}
+
+/// Identity read from the root-owned marker of a prebuilt Ayni environment.
+/// It is structural provenance only; signature and protected-content verification
+/// are deliberately separate runtime policies.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunArtifactMetadata {
     pub generated_at: String,
     pub ayni_version: String,
@@ -58,6 +69,8 @@ pub struct RunArtifactMetadata {
     pub contract_digest: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub environment_lock_fingerprint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prebuilt_runtime: Option<PrebuiltRuntimeIdentity>,
     pub source_fingerprint: String,
     #[serde(default)]
     pub tool_versions: Vec<ArtifactToolVersion>,
@@ -76,6 +89,7 @@ impl Default for RunArtifactMetadata {
             execution_mode: ExecutionMode::Host,
             contract_digest: empty_digest.clone(),
             environment_lock_fingerprint: None,
+            prebuilt_runtime: None,
             source_fingerprint: empty_digest,
             tool_versions: Vec::new(),
         }
@@ -397,6 +411,8 @@ struct RunArtifactSerialization<'a> {
     contract_digest: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     environment_lock_fingerprint: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prebuilt_runtime: Option<&'a PrebuiltRuntimeIdentity>,
     source_fingerprint: &'a str,
     tool_versions: &'a [ArtifactToolVersion],
     completion: &'a RunCompletion,
@@ -421,6 +437,7 @@ impl<'a> From<&'a RunArtifact> for RunArtifactSerialization<'a> {
             execution_mode: artifact.metadata.execution_mode,
             contract_digest: &artifact.metadata.contract_digest,
             environment_lock_fingerprint: artifact.metadata.environment_lock_fingerprint.as_deref(),
+            prebuilt_runtime: artifact.metadata.prebuilt_runtime.as_ref(),
             source_fingerprint: &artifact.metadata.source_fingerprint,
             tool_versions: &artifact.metadata.tool_versions,
             completion: &artifact.completion,
@@ -501,6 +518,8 @@ struct RunArtifactWire {
     execution_mode: ExecutionMode,
     contract_digest: String,
     environment_lock_fingerprint: Option<String>,
+    #[serde(default)]
+    prebuilt_runtime: Option<PrebuiltRuntimeIdentity>,
     source_fingerprint: String,
     #[serde(default)]
     tool_versions: Vec<ArtifactToolVersion>,
@@ -575,6 +594,7 @@ impl RunArtifactWire {
                 execution_mode: self.execution_mode,
                 contract_digest: self.contract_digest,
                 environment_lock_fingerprint: self.environment_lock_fingerprint,
+                prebuilt_runtime: self.prebuilt_runtime,
                 source_fingerprint: self.source_fingerprint,
                 tool_versions: self.tool_versions,
             },

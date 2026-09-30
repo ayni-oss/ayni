@@ -674,6 +674,15 @@ fn current_plan(
     }
 }
 
+pub(crate) fn validate_prebuilt_source(
+    root: &Path,
+    config: &Path,
+    registry: &AdapterRegistry,
+) -> Result<String, ayni_environment::BackendError> {
+    let (root, _) = current_plan(root, Some(config), registry)?;
+    Ok(ayni_environment::read_lock(&root)?.fingerprint().to_owned())
+}
+
 fn ensure_requested_contract_matches_lock(
     repo_root: &Path,
     requested_contract: &Path,

@@ -2,7 +2,7 @@ use super::*;
 use ayni_adapters_common::workspace::{
     git_workspace_entries, has_git_ancestor, is_universal_workspace_state,
 };
-use ayni_core::{lower_hex, sha256_fingerprint};
+use ayni_core::{PrebuiltRuntimeIdentity, lower_hex, sha256_fingerprint};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::time::Duration;
@@ -46,15 +46,9 @@ pub(crate) fn build_artifact_metadata_for_command(
         .targets
         .first()
         .map(|target| target.run_context.scope.clone());
-    let managed = managed_execution_active();
-    let mut tool_versions = if managed {
-        let value = std::env::var(MANAGED_TOOL_VERSIONS)
-            .map_err(|_| String::from("managed execution is missing tool-version provenance"))?;
-        serde_json::from_str::<Vec<ArtifactToolVersion>>(&value)
-            .map_err(|error| format!("managed tool-version provenance is invalid: {error}"))?
-    } else {
-        Vec::new()
-    };
+    let prebuilt_runtime = prebuilt_runtime_identity()?;
+    let managed = managed_execution_active() || prebuilt_runtime.is_some();
+    let mut tool_versions = managed_tool_versions(managed, prebuilt_runtime.is_some())?;
     tool_versions.sort();
     tool_versions.dedup();
 
@@ -78,13 +72,47 @@ pub(crate) fn build_artifact_metadata_for_command(
             ExecutionMode::Host
         },
         contract_digest: file_fingerprint(config_path)?,
-        environment_lock_fingerprint: managed
-            .then(|| std::env::var(MANAGED_LOCK_FINGERPRINT))
-            .transpose()
-            .map_err(|_| String::from("managed execution is missing lock provenance"))?,
+        environment_lock_fingerprint: runtime_lock_fingerprint(&prebuilt_runtime, managed)?,
+        prebuilt_runtime,
         source_fingerprint: source_fingerprint(workspace_root)?,
         tool_versions,
     })
+}
+
+fn managed_tool_versions(
+    managed: bool,
+    prebuilt: bool,
+) -> Result<Vec<ArtifactToolVersion>, String> {
+    if !managed || prebuilt {
+        return Ok(Vec::new());
+    }
+    let value = std::env::var(MANAGED_TOOL_VERSIONS)
+        .map_err(|_| String::from("managed execution is missing tool-version provenance"))?;
+    serde_json::from_str(&value)
+        .map_err(|error| format!("managed tool-version provenance is invalid: {error}"))
+}
+
+fn runtime_lock_fingerprint(
+    prebuilt_runtime: &Option<PrebuiltRuntimeIdentity>,
+    managed: bool,
+) -> Result<Option<String>, String> {
+    match prebuilt_runtime {
+        Some(runtime) => Ok(Some(
+            runtime.certificate.certificate.lock_fingerprint.clone(),
+        )),
+        None if managed => std::env::var(MANAGED_LOCK_FINGERPRINT)
+            .map(Some)
+            .map_err(|_| String::from("managed execution is missing lock provenance")),
+        None => Ok(None),
+    }
+}
+
+fn prebuilt_runtime_identity() -> Result<Option<PrebuiltRuntimeIdentity>, String> {
+    Ok(crate::prebuilt_runtime::active_identity())
+}
+
+fn prebuilt_runtime_active() -> bool {
+    crate::prebuilt_runtime::active()
 }
 
 fn file_fingerprint(path: &Path) -> Result<String, String> {
@@ -341,6 +369,9 @@ pub(crate) fn serialize_artifact(artifact: &RunArtifact) -> Result<String, Strin
 /// contract validation fails before target planning. Absence is safer than a
 /// prior successful artifact whose contract digest no longer matches.
 pub(crate) fn invalidate_artifact_at(repo_root: &Path, relative_path: &str) -> Result<(), String> {
+    if prebuilt_runtime_active() {
+        return Ok(());
+    }
     let destination = repo_root.join(relative_path);
     if matches!(
         destination.file_name().and_then(|name| name.to_str()),
@@ -371,6 +402,9 @@ pub(crate) fn persist_artifact_at(
     relative_path: &str,
     serialized: &str,
 ) -> Result<(), String> {
+    if prebuilt_runtime_active() {
+        return Ok(());
+    }
     let destination = repo_root.join(relative_path);
     let parent = destination
         .parent()
