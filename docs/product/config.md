@@ -76,6 +76,11 @@ packages = ["libssl-dev", "postgresql-client"]
 access = "socket"
 network = "bridge"
 
+# Optional registry-neutral trust roots for portable prebuilt environments.
+# Values are lowercase hexadecimal Ed25519 public keys.
+[environment.certificate.trusted_keys]
+release-2026 = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+
 [environment.resources]
 cpus = 4
 memory_mib = 8192
@@ -90,6 +95,14 @@ arbitrary shell commands. Debian entries may use either a package name or an
 exact `name=version` specification. The lock records the requested package
 specification; use `name=version` when the Debian repository configured by the
 base must not select a newer version.
+
+Portable environment certificates use Ed25519 keys pinned under
+`environment.certificate.trusted_keys`. Ayni canonicalizes this key map and
+records its SHA-256 fingerprint in `.ayni.lock`; changing a trusted key requires
+an explicit `ayni env lock` refresh. The certificate deliberately does not
+contain its final OCI image digest, because embedding that digest would change
+the image itself. A launcher may bind an independently observed immutable OCI
+digest to execution evidence.
 
 Docker access and network access are disabled by default. `access = "socket"`
 mounts the host Docker Unix socket, installs the Debian `docker.io` client, and

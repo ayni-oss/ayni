@@ -133,7 +133,7 @@ fn build_and_run_use_a_fake_docker_without_baking_the_checkout() {
     let base_digest = lock["provisioning_base"]["digest"].as_str().unwrap();
     let labels = serde_json::json!({
         "dev.ayni.environment.owner": "ayni",
-        "dev.ayni.environment.schema": "0.7.0",
+        "dev.ayni.environment.schema": "0.8.0",
         "dev.ayni.environment.lock-fingerprint": fingerprint,
         "dev.ayni.environment.base-digest": base_digest,
         "dev.ayni.environment.ayni-version": env!("CARGO_PKG_VERSION"),
@@ -495,7 +495,7 @@ fn npm_dependencies_are_staged_materialized_offline_and_mounted_for_managed_qual
         serde_json::from_slice(&fs::read(root.path().join(".ayni.lock")).unwrap()).unwrap();
     let labels = serde_json::json!({
         "dev.ayni.environment.owner": "ayni",
-        "dev.ayni.environment.schema": "0.7.0",
+        "dev.ayni.environment.schema": "0.8.0",
         "dev.ayni.environment.lock-fingerprint": lock["fingerprint"],
         "dev.ayni.environment.base-digest": lock["provisioning_base"]["digest"],
         "dev.ayni.environment.ayni-version": env!("CARGO_PKG_VERSION"),
@@ -628,7 +628,7 @@ fn pnpm_workspace_materializes_all_node_modules_trees_in_one_offline_run() {
         serde_json::from_slice(&fs::read(root.path().join(".ayni.lock")).unwrap()).unwrap();
     let labels = serde_json::json!({
         "dev.ayni.environment.owner": "ayni",
-        "dev.ayni.environment.schema": "0.7.0",
+        "dev.ayni.environment.schema": "0.8.0",
         "dev.ayni.environment.lock-fingerprint": lock["fingerprint"],
         "dev.ayni.environment.base-digest": lock["provisioning_base"]["digest"],
         "dev.ayni.environment.ayni-version": env!("CARGO_PKG_VERSION"),
@@ -812,7 +812,7 @@ fn five_language_build_composes_preparation_without_staging_source() {
         serde_json::from_slice(&fs::read(root.path().join(".ayni.lock")).unwrap()).unwrap();
     let labels = serde_json::json!({
         "dev.ayni.environment.owner": "ayni",
-        "dev.ayni.environment.schema": "0.7.0",
+        "dev.ayni.environment.schema": "0.8.0",
         "dev.ayni.environment.lock-fingerprint": lock["fingerprint"],
         "dev.ayni.environment.base-digest": lock["provisioning_base"]["digest"],
         "dev.ayni.environment.ayni-version": env!("CARGO_PKG_VERSION"),
@@ -952,7 +952,7 @@ fn storage_prune_separates_repo_state_from_engine_wide_images() {
     let record = root.path().join("storage-record");
     let labels = serde_json::json!({
         "dev.ayni.environment.owner": "ayni",
-        "dev.ayni.environment.schema": "0.7.0",
+        "dev.ayni.environment.schema": "0.8.0",
         "dev.ayni.environment.lock-fingerprint": lock["fingerprint"],
         "dev.ayni.environment.base-digest": lock["provisioning_base"]["digest"],
         "dev.ayni.environment.ayni-version": env!("CARGO_PKG_VERSION"),

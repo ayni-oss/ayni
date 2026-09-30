@@ -15,7 +15,7 @@ for argument in "$@"; do
 done
 case "$1:$2:$last" in
   image:inspect:*@sha256:*)
-    printf '[{"Id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","Os":"linux","Architecture":"%s","Config":{"Labels":{"org.opencontainers.image.revision":"ffffffffffffffffffffffffffffffffffffffff","dev.ayni.executor.lock-schema":"0.7.0","dev.ayni.executor.recipe":"%s","dev.ayni.provisioning.schema":"1","dev.ayni.environment.variant":"debian","dev.ayni.environment.mise-version":"2025.2.4"}}}]\n' "$ARCH" "${AYNI_TEST_EXECUTOR_RECIPE:-1}"
+    printf '[{"Id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","Os":"linux","Architecture":"%s","Config":{"Labels":{"org.opencontainers.image.revision":"ffffffffffffffffffffffffffffffffffffffff","dev.ayni.executor.lock-schema":"0.8.0","dev.ayni.executor.recipe":"%s","dev.ayni.provisioning.schema":"1","dev.ayni.environment.variant":"debian","dev.ayni.environment.mise-version":"2025.2.4"}}}]\n' "$ARCH" "${AYNI_TEST_EXECUTOR_RECIPE:-1}"
     exit 0;;
 esac
 if [ "$1" = run ]; then

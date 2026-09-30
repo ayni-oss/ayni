@@ -1,15 +1,16 @@
 use crate::environment_provisioning::normalize_debian_package_spec;
 use crate::{
-    EnvironmentCapabilities, EnvironmentPlanError, EnvironmentResourceLimits,
-    RequirementConfidence, RequirementSource, ResolvedEnvironmentPlan, SignalKind, TargetIdentity,
-    TargetPlatform, ToolInstallationScope, VersionRequirement, sha256_fingerprint,
+    EnvironmentCapabilities, EnvironmentCertificateTrustPolicy, EnvironmentPlanError,
+    EnvironmentResourceLimits, RequirementConfidence, RequirementSource, ResolvedEnvironmentPlan,
+    SignalKind, TargetIdentity, TargetPlatform, ToolInstallationScope, VersionRequirement,
+    sha256_fingerprint,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Component, Path};
 
 /// Version of the committed, deterministic environment lock document.
-pub const ENVIRONMENT_LOCK_SCHEMA_VERSION: &str = "0.7.0";
+pub const ENVIRONMENT_LOCK_SCHEMA_VERSION: &str = "0.8.0";
 /// Provisioning and execution recipe contract accepted by this lock schema.
 pub const ENVIRONMENT_LOCK_RECIPE_VERSION: &str = "1";
 
@@ -22,6 +23,25 @@ pub struct ProvisioningBase {
     pub digest: String,
     pub variant: String,
     pub mise_version: String,
+}
+
+/// Lock projection of the repository trust policy for portable environment
+/// certificates. Public keys remain in `.ayni.toml`; their canonical policy
+/// fingerprint makes a key rotation require an explicit lock refresh.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LockedCertificateTrustPolicy {
+    pub schema_version: String,
+    pub fingerprint: String,
+}
+
+impl LockedCertificateTrustPolicy {
+    fn from_policy(policy: &EnvironmentCertificateTrustPolicy) -> Self {
+        Self {
+            schema_version: crate::ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION.into(),
+            fingerprint: policy.fingerprint(),
+        }
+    }
 }
 
 /// Portable provenance retained by a lock. Free-form source detail is omitted
@@ -142,6 +162,7 @@ pub struct EnvironmentLock {
     ayni_version: String,
     mise_version: String,
     provisioning_base: ProvisioningBase,
+    certificate_trust_policy: LockedCertificateTrustPolicy,
     platforms: Vec<TargetPlatform>,
     targets: Vec<LockedTargetEnvironment>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -169,6 +190,7 @@ impl<'de> Deserialize<'de> for EnvironmentLock {
             ayni_version: String,
             mise_version: String,
             provisioning_base: ProvisioningBase,
+            certificate_trust_policy: LockedCertificateTrustPolicy,
             platforms: Vec<TargetPlatform>,
             targets: Vec<LockedTargetEnvironment>,
             #[serde(default)]
@@ -192,6 +214,7 @@ impl<'de> Deserialize<'de> for EnvironmentLock {
             ayni_version: wire.ayni_version,
             mise_version: wire.mise_version,
             provisioning_base: wire.provisioning_base,
+            certificate_trust_policy: wire.certificate_trust_policy,
             platforms: wire.platforms,
             targets: wire.targets,
             tools: wire.tools,
@@ -210,6 +233,7 @@ struct EnvironmentLockParts {
     ayni_version: String,
     mise_version: String,
     provisioning_base: ProvisioningBase,
+    certificate_trust_policy: LockedCertificateTrustPolicy,
     platforms: Vec<TargetPlatform>,
     targets: Vec<LockedTargetEnvironment>,
     tools: Vec<LockedMiseTool>,
@@ -227,6 +251,7 @@ impl EnvironmentLock {
         ayni_version: impl Into<String>,
         mise_version: impl Into<String>,
         provisioning_base: ProvisioningBase,
+        certificate_trust_policy: &EnvironmentCertificateTrustPolicy,
         contract_path: impl AsRef<str>,
         source_digests: &BTreeMap<String, String>,
     ) -> Result<Self, EnvironmentPlanError> {
@@ -325,6 +350,9 @@ impl EnvironmentLock {
             ayni_version: ayni_version.into(),
             mise_version: mise_version.into(),
             provisioning_base,
+            certificate_trust_policy: LockedCertificateTrustPolicy::from_policy(
+                certificate_trust_policy,
+            ),
             platforms: plan.platforms().to_vec(),
             targets,
             tools,
@@ -342,6 +370,7 @@ impl EnvironmentLock {
             mut ayni_version,
             mut mise_version,
             mut provisioning_base,
+            certificate_trust_policy,
             mut platforms,
             mut targets,
             mut tools,
@@ -358,6 +387,7 @@ impl EnvironmentLock {
             return Err(EnvironmentPlanError::UnsupportedLockSchema(schema_version));
         }
         normalize_provisioning_base(&mut provisioning_base)?;
+        normalize_certificate_trust_policy(&certificate_trust_policy)?;
         normalize_lock_header(
             &mut repository,
             &mut ayni_version,
@@ -377,6 +407,7 @@ impl EnvironmentLock {
             ayni_version,
             mise_version,
             provisioning_base,
+            certificate_trust_policy,
             platforms,
             targets,
             tools,
@@ -413,6 +444,7 @@ impl EnvironmentLock {
             ayni_version: &'a str,
             mise_version: &'a str,
             provisioning_base: &'a ProvisioningBase,
+            certificate_trust_policy: &'a LockedCertificateTrustPolicy,
             platforms: &'a [TargetPlatform],
             targets: &'a [LockedTargetEnvironment],
             tools: &'a [LockedMiseTool],
@@ -427,6 +459,7 @@ impl EnvironmentLock {
             ayni_version: &self.ayni_version,
             mise_version: &self.mise_version,
             provisioning_base: &self.provisioning_base,
+            certificate_trust_policy: &self.certificate_trust_policy,
             platforms: &self.platforms,
             targets: &self.targets,
             tools: &self.tools,
@@ -483,6 +516,25 @@ impl EnvironmentLock {
     pub fn provisioning_base(&self) -> &ProvisioningBase {
         &self.provisioning_base
     }
+    #[must_use]
+    pub fn certificate_trust_policy(&self) -> &LockedCertificateTrustPolicy {
+        &self.certificate_trust_policy
+    }
+}
+
+fn normalize_certificate_trust_policy(
+    policy: &LockedCertificateTrustPolicy,
+) -> Result<(), EnvironmentPlanError> {
+    if policy.schema_version != crate::ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION {
+        return Err(EnvironmentPlanError::EmptyField(
+            "certificate trust-policy schema",
+        ));
+    }
+    lock_validate_digest(
+        "certificate trust-policy fingerprint",
+        policy.fingerprint.clone(),
+    )?;
+    Ok(())
 }
 
 fn normalize_provisioning_base(base: &mut ProvisioningBase) -> Result<(), EnvironmentPlanError> {
@@ -789,6 +841,13 @@ mod tests {
         }
     }
 
+    fn certificate_trust_policy() -> LockedCertificateTrustPolicy {
+        LockedCertificateTrustPolicy {
+            schema_version: crate::ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION.into(),
+            fingerprint: digest('d'),
+        }
+    }
+
     fn target(language: Language, root: &str) -> LockedTargetEnvironment {
         LockedTargetEnvironment {
             target: TargetIdentity::new(language, root).expect("target identity"),
@@ -819,6 +878,7 @@ mod tests {
             ayni_version: "0.8.1".to_owned(),
             mise_version: "2026.8.7".to_owned(),
             provisioning_base: base(),
+            certificate_trust_policy: certificate_trust_policy(),
             platforms: vec![TargetPlatform {
                 os: OperatingSystem::Linux,
                 architecture: Architecture::Amd64,
@@ -923,6 +983,7 @@ mod tests {
                 ayni_version: "0.8.1".to_owned(),
                 mise_version: "2026.8.7".to_owned(),
                 provisioning_base: base,
+                certificate_trust_policy: certificate_trust_policy(),
                 platforms: vec![TargetPlatform {
                     os: OperatingSystem::Linux,
                     architecture: Architecture::Amd64,
@@ -964,6 +1025,7 @@ mod tests {
                 ayni_version: "0.8.1".to_owned(),
                 mise_version: "2026.8.7".to_owned(),
                 provisioning_base: base(),
+                certificate_trust_policy: certificate_trust_policy(),
                 platforms: vec![TargetPlatform {
                     os: OperatingSystem::Linux,
                     architecture: Architecture::Amd64,

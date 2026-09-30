@@ -16,7 +16,7 @@ pub(crate) const IMAGE_PLATFORM_LABEL: &str = "dev.ayni.environment.platform";
 pub(crate) const IMAGE_PREPARATION_LABEL: &str = "dev.ayni.environment.preparation-digest";
 pub(crate) const IMAGE_OWNER_LABEL: &str = "dev.ayni.environment.owner";
 pub(crate) const IMAGE_OWNER_VALUE: &str = "ayni";
-pub(crate) const IMAGE_SCHEMA_VERSION: &str = "0.7.0";
+pub(crate) const IMAGE_SCHEMA_VERSION: &str = "0.8.0";
 pub(crate) const MISE_GITHUB_TOKEN_SECRET: &str = "MISE_GITHUB_TOKEN";
 
 const MISE_GITHUB_TOKEN_SECRET_MOUNT: &str =
@@ -513,7 +513,7 @@ mod tests {
             &lock.repository().contract_digest,
             &format!("sha256:{}", "c".repeat(64)),
         );
-        let document = format!("{}}}", updated.split(",\"fingerprint\":").next().unwrap()).replace(
+        let document = format!("{}}}", updated.rsplit_once(",\"fingerprint\":").unwrap().0).replace(
             ",\"capabilities\":",
             ",\"tools\":[],\"debian_packages\":[],\"capabilities\":",
         );
@@ -543,7 +543,7 @@ mod tests {
             &lock.provisioning_base().digest,
             &format!("sha256:{}", "d".repeat(64)),
         );
-        let document = format!("{}}}", updated.split(",\"fingerprint\":").next().unwrap()).replace(
+        let document = format!("{}}}", updated.rsplit_once(",\"fingerprint\":").unwrap().0).replace(
             ",\"capabilities\":",
             ",\"tools\":[],\"debian_packages\":[],\"capabilities\":",
         );

@@ -567,7 +567,9 @@ fn serialized_contract_contains_no_provider_commands_or_host_paths() {
 
 #[test]
 fn tool_version_authority_survives_plan_resolution_and_lock_round_trip() {
-    use crate::{EnvironmentLock, ProvisioningBase, ToolVersionAuthority};
+    use crate::{
+        EnvironmentCertificateTrustPolicy, EnvironmentLock, ProvisioningBase, ToolVersionAuthority,
+    };
     use std::collections::BTreeMap;
     for (authority, scope) in [
         (
@@ -608,6 +610,7 @@ fn tool_version_authority_survives_plan_resolution_and_lock_round_trip() {
                 variant: "debian".into(),
                 mise_version: "2026.8.7".into(),
             },
+            &EnvironmentCertificateTrustPolicy::new(BTreeMap::new()).unwrap(),
             ".ayni.toml",
             &BTreeMap::from([
                 (String::from("apps/web/package.json"), digest('a')),

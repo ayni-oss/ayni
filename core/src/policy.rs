@@ -2,6 +2,7 @@ use crate::adapter::PolicyEffectivenessFacts;
 use crate::environment::{
     DockerAccess, EnvironmentCapabilities, EnvironmentResourceLimits, NetworkAccess,
 };
+use crate::environment_certificate::EnvironmentCertificateTrustPolicy;
 use crate::environment_provisioning::normalize_debian_package_spec;
 use crate::language::Language;
 use crate::signal::SignalKind;
@@ -85,6 +86,14 @@ pub struct DockerEnvironmentPolicy {
     pub network: NetworkAccess,
 }
 
+/// Public keys trusted to sign portable environment certificates. Key IDs are
+/// stable policy names; values are lowercase hexadecimal Ed25519 public keys.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct EnvironmentCertificatePolicy {
+    pub trusted_keys: BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct EnvironmentPolicy {
@@ -93,6 +102,7 @@ pub struct EnvironmentPolicy {
     pub tools: BTreeMap<String, String>,
     pub debian: DebianEnvironmentPolicy,
     pub docker: DockerEnvironmentPolicy,
+    pub certificate: EnvironmentCertificatePolicy,
     pub resources: EnvironmentResourceLimits,
 }
 
@@ -234,6 +244,13 @@ impl AyniPolicy {
     #[must_use]
     pub const fn environment_resource_limits(&self) -> EnvironmentResourceLimits {
         self.environment.resources
+    }
+
+    pub fn environment_certificate_trust_policy(
+        &self,
+    ) -> Result<EnvironmentCertificateTrustPolicy, String> {
+        EnvironmentCertificateTrustPolicy::new(self.environment.certificate.trusted_keys.clone())
+            .map_err(|error| error.to_string())
     }
 
     #[must_use]
@@ -564,6 +581,8 @@ fn normalize_policy_roots(policy: &mut AyniPolicy) -> Result<(), String> {
 fn normalize_environment_policy(environment: &mut EnvironmentPolicy) -> Result<(), String> {
     normalize_environment_tools(&mut environment.tools)?;
     normalize_debian_packages(&mut environment.debian.packages)?;
+    EnvironmentCertificateTrustPolicy::new(environment.certificate.trusted_keys.clone())
+        .map_err(|error| format!("environment.certificate.trusted_keys: {error}"))?;
     environment.resources.validate()
 }
 
