@@ -198,6 +198,7 @@ dependencies = [
  "clap",
  "clap-markdown",
  "crossterm",
+ "ed25519-dalek",
  "owo-colors",
  "ratatui",
  "serde",

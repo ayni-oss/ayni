@@ -434,7 +434,21 @@ fn repository_launch_args(request: RepositoryLaunch<'_>) -> Result<Vec<String>, 
     Ok(args)
 }
 
-fn managed_tool_versions(lock: &EnvironmentLock) -> Result<String, BackendError> {
+pub fn locked_target_environments(
+    lock: &EnvironmentLock,
+) -> Result<BTreeMap<String, BTreeMap<String, String>>, BackendError> {
+    lock.targets()
+        .iter()
+        .map(|target| {
+            Ok((
+                format!("{}:{}", target.target.language.as_str(), target.target.root),
+                target_environment(target)?.into_iter().collect(),
+            ))
+        })
+        .collect()
+}
+
+pub fn locked_tool_versions(lock: &EnvironmentLock) -> Vec<ArtifactToolVersion> {
     let mut versions = vec![ArtifactToolVersion {
         tool: String::from("mise"),
         version: lock.mise_version().to_owned(),
@@ -462,7 +476,11 @@ fn managed_tool_versions(lock: &EnvironmentLock) -> Result<String, BackendError>
     }));
     versions.sort();
     versions.dedup();
-    serde_json::to_string(&versions).map_err(|error| {
+    versions
+}
+
+fn managed_tool_versions(lock: &EnvironmentLock) -> Result<String, BackendError> {
+    serde_json::to_string(&locked_tool_versions(lock)).map_err(|error| {
         BackendError::environment(format!(
             "failed to serialize managed tool provenance: {error}"
         ))

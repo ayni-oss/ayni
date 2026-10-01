@@ -165,6 +165,21 @@ checkout; push it to a job-local registry to obtain the pullable reference.
 A source commit identifies its checkout baseline, while the executable and OCI
 digests capture the actual bytes, including uncommitted changes.
 
+Contributors can exercise the complete portable-runtime path on Linux or macOS
+with Docker:
+
+```sh
+scripts/test-prebuilt-runtime.sh
+```
+
+The harness builds matching host and Linux checkout binaries, uses an ephemeral
+local registry, locks a minimal fixture with a test-only certificate key, runs
+`env build`, and then invokes `ayni check` directly in the certified image with
+a read-only source mount and disabled network. It also checks certificate,
+lock, manifest, protected-file, permission, and symlink rejection boundaries.
+Test signing material and images are local to the harness and are not release
+inputs.
+
 For installed releases, the first build resolves the matching published executor
 and records its immutable identity. Later builds reuse it without resolving the
 mutable release tag again. A version/platform-incompatible or invalid record
@@ -458,26 +473,43 @@ rules](/product/runtime).
 
 ## Prebuilt runtime discovery
 
-A published Ayni environment can run `ayni check` without a local container
-engine. Ayni recognizes this mode only when `/etc/ayni/runtime.json` is a
-root-owned regular file containing the portable environment-certificate
-envelope. Ayni-built images also retain the signed inventory at
-`/etc/ayni/protected-content.manifest`. The marker is runtime provenance, not
-external-image admission: this release does not yet admit an independently
-supplied image by verifying its signature and protected filesystem contents.
+A published Ayni environment can run `ayni check` without an OCI engine inside
+the runtime. Ayni recognizes this mode only when it is itself the protected
+`/usr/local/bin/ayni` runner and `/etc/ayni/runtime.json` is a root-owned,
+mode-`0444` regular file containing the canonical portable certificate envelope.
+The runner verifies the Ed25519 signature against the source policy's trusted
+key before activating this mode.
 
 In that mode, Ayni uses `AYNI_SOURCE_ROOT` when set, otherwise its current
 working directory. The selected source must provide regular `.ayni.toml` and
-`.ayni.lock` files, and the lock must still describe the mounted source. Its
-fingerprint must match the runtime marker. Check evidence includes the marker
-digest and certificate claims, while source files remain untouched so a
-read-only mount is supported:
+`.ayni.lock` files, and the lock must still describe the mounted source. The
+certificate must match the lock fingerprint, runtime platform, exact Ayni
+version, and installed-tool inventory. Ayni also requires the root-owned,
+mode-`0444` canonical `/etc/ayni/protected-content.manifest`, verifies its signed
+digest, and compares every declared regular file and symlink with the runtime
+filesystem before quality work begins.
+
+Source remains read-only during validation, and verification itself needs no
+source writes. A dependency-free check can use temporary tool state:
 
 ```sh
-docker run -v "$PWD:/workspace:ro" -w /workspace \
+docker run --rm --read-only --network none \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=$PWD,target=/workspace,readonly" \
+  --tmpfs /tmp:rw,exec,nosuid,size=1g \
+  --env HOME=/tmp/home --env XDG_STATE_HOME=/tmp/home/.local/state \
+  --env CARGO_TARGET_DIR=/tmp/target --workdir /workspace \
   registry/project-env@sha256:... ayni check
 ```
 
-When the marker is absent, `ayni check` retains the ordinary local managed
-execution behavior. Image pull, publication, lifecycle, and certificate
-verification remain external-runner responsibilities.
+Checks that need prepared dependencies or output mounts require the launcher to
+supply them; portable quality routing is separate from this in-place
+verification contract.
+
+Check evidence includes the certificate identity and protected-content root.
+When the marker is absent, `ayni check` retains ordinary local managed execution.
+The launcher remains responsible for a trusted immutable image identity, the
+shown security flags, image pull, publication, and lifecycle. This in-place
+check does not constitute external OCI image admission or authenticate image
+configuration outside the signed protected-content set.

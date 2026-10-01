@@ -26,10 +26,16 @@ set -eu
 for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
 done
+for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup /home/ayni/.cache/cargo/bin; do
+    [ ! -e "$root" ] || {
+        unsupported=$(/usr/bin/find "$root" -xdev ! -type d ! -type f ! -type l -printf x -quit)
+        [ -z "$unsupported" ] || { echo "unsupported protected content below $root" >&2; exit 1; }
+    }
+done
 file_list=$(/usr/bin/mktemp /tmp/ayni-protected-files.XXXXXX)
 sorted_list=$(/usr/bin/mktemp /tmp/ayni-protected-files-sorted.XXXXXX)
 trap '/usr/bin/rm -f "$file_list" "$sorted_list"' 0 HUP INT TERM
-for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup; do
+for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup /home/ayni/.cache/cargo/bin; do
     [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type f -print0 >> "$file_list"
 done
 LC_ALL=C /usr/bin/sort -z "$file_list" -o "$sorted_list"
@@ -40,7 +46,7 @@ set -eu
 for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
 done
-for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup; do
+for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup /home/ayni/.cache/cargo/bin; do
     [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type l -printf '%p\0%l\0'
 done
 "#;
@@ -428,7 +434,7 @@ fn build_image(
 
     let manifest = generate_manifest(root, engine, &assembled_image)?;
     let certification = crate::certificate::create(lock, plan, manifest, signing)?;
-    input.add_certification(&assembled_tag, &certification)?;
+    input.add_certification(&assembled_tag, &assembled_image, &certification)?;
 
     let certified_iid = input.path.join("certified.iid");
     let certified_args = vec![
@@ -663,10 +669,11 @@ impl BuildInput {
 
     fn add_certification(
         &self,
+        assembled_tag: &str,
         assembled_image: &str,
         certification: &Certification,
     ) -> Result<(), BackendError> {
-        if !assembled_image
+        if !assembled_tag
             .strip_prefix("ayni-env-stage:")
             .is_some_and(|tag| {
                 !tag.is_empty()
@@ -674,13 +681,14 @@ impl BuildInput {
                         .bytes()
                         .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
             })
+            || !crate::executor::valid_digest(assembled_image)
         {
             return Err(BackendError::execution(
-                "assembled environment image has an invalid private tag",
+                "assembled environment image has an invalid private identity",
             ));
         }
         let dockerfile = format!(
-            "FROM {assembled_image}\nUSER root\nCOPY --chown=0:0 certificate.json {certificate_path}\nCOPY --chown=0:0 protected-content.manifest {manifest_path}\nRUN /usr/bin/chown 0:0 {certificate_path} {manifest_path} \\\n    && /usr/bin/chmod 0444 {certificate_path} {manifest_path}\nLABEL {owner_label}=\"{owner}\" \\\n      {schema_label}=\"{schema}\" \\\n      {key_label}=\"{key_id}\" \\\n      {root_label}=\"{content_root}\"\nUSER 10001:10001\nWORKDIR /workspace\n",
+            "FROM {assembled_tag}@{assembled_image}\nUSER root\nCOPY --chown=0:0 certificate.json {certificate_path}\nCOPY --chown=0:0 protected-content.manifest {manifest_path}\nRUN /usr/bin/chown 0:0 {certificate_path} {manifest_path} \\\n    && /usr/bin/chmod 0444 {certificate_path} {manifest_path}\nLABEL {owner_label}=\"{owner}\" \\\n      {schema_label}=\"{schema}\" \\\n      {key_label}=\"{key_id}\" \\\n      {root_label}=\"{content_root}\"\nUSER 10001:10001\nWORKDIR /workspace\n",
             certificate_path = CERTIFICATE_PATH,
             manifest_path = MANIFEST_PATH,
             owner_label = IMAGE_OWNER_LABEL,
@@ -1024,6 +1032,27 @@ mod cache_tests {
         assert!(!FILE_INVENTORY_SCRIPT.contains(" | "));
         for command in ["/usr/bin/find", "/usr/bin/sort", "/usr/bin/xargs"] {
             assert!(FILE_INVENTORY_SCRIPT.contains(command));
+        }
+    }
+
+    #[test]
+    fn certification_and_runtime_verification_share_protected_roots() {
+        for root in crate::certificate::PROTECTED_FILE_ROOTS
+            .iter()
+            .chain(crate::certificate::PROTECTED_TREE_ROOTS)
+        {
+            assert!(
+                FILE_INVENTORY_SCRIPT
+                    .split_ascii_whitespace()
+                    .any(|value| value.trim_end_matches(';') == *root),
+                "file inventory is missing {root}"
+            );
+            assert!(
+                SYMLINK_INVENTORY_SCRIPT
+                    .split_ascii_whitespace()
+                    .any(|value| value.trim_end_matches(';') == *root),
+                "symlink inventory is missing {root}"
+            );
         }
     }
 

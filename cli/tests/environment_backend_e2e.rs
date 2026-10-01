@@ -201,7 +201,20 @@ fn build_and_run_use_a_fake_docker_without_baking_the_checkout() {
     assert!(!dockerfile.contains("dev.ayni.environment.owner=\"ayni\""));
     let certified_dockerfile =
         fs::read_to_string(root.path().join("bin/executor-certified.Dockerfile")).unwrap();
-    assert!(certified_dockerfile.starts_with("FROM ayni-env-stage:"));
+    let certified_base = certified_dockerfile
+        .lines()
+        .next()
+        .and_then(|line| line.strip_prefix("FROM ayni-env-stage:"))
+        .and_then(|value| value.split_once("@sha256:"))
+        .expect("certification must pin the private assembled tag by immutable digest");
+    assert!(!certified_base.0.is_empty());
+    assert_eq!(certified_base.1.len(), 64);
+    assert!(
+        certified_base
+            .1
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    );
     assert!(
         certified_dockerfile.contains("COPY --chown=0:0 certificate.json /etc/ayni/runtime.json")
     );

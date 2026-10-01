@@ -144,6 +144,12 @@ jobs:
           curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null
           python3 scripts/ci/candidate.py import --directory .ayni/ci-candidate --source "$SOURCE" --platform "$PLATFORM" --run-id "$GITHUB_RUN_ID"
 
+      - name: Verify certified prebuilt runtime
+        run: |
+          scripts/test-prebuilt-runtime.sh \
+            --cli "${{ steps.candidate.outputs.cli }}" \
+            --executor "${{ steps.candidate.outputs.executor }}"
+
       - name: Generate ephemeral environment signing material
         run: |
           signing_key=$(openssl rand -hex 32)

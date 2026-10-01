@@ -83,8 +83,11 @@ fn managed_tool_versions(
     managed: bool,
     prebuilt: bool,
 ) -> Result<Vec<ArtifactToolVersion>, String> {
-    if !managed || prebuilt {
+    if !managed {
         return Ok(Vec::new());
+    }
+    if prebuilt {
+        return Ok(crate::prebuilt_runtime::active_tool_versions());
     }
     let value = std::env::var(MANAGED_TOOL_VERSIONS)
         .map_err(|_| String::from("managed execution is missing tool-version provenance"))?;

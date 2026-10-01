@@ -102,8 +102,8 @@ fn dispatch_analysis(operation: application::Operation) -> ExitCode {
 
 fn dispatch_check_operation(operation: application::CheckOperation) -> ExitCode {
     match prebuilt_runtime::discover() {
-        Ok(Some(runtime)) => {
-            prebuilt_runtime::prepare_check(operation, &runtime, &build_registry())
+        Ok(Some(mut runtime)) => {
+            prebuilt_runtime::prepare_check(operation, &mut runtime, &build_registry())
                 .and_then(|operation| {
                     prebuilt_runtime::activate(&runtime)?;
                     Ok(dispatch_host_check(operation))
