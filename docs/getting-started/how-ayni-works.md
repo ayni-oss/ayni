@@ -110,6 +110,9 @@ The CLI installation itself is machine-level tooling. Installing or upgrading `a
 
 ## The normal lifecycle
 
+The build step requires the
+[environment certificate signing variables](/product/environments#build-and-dependency-preparation).
+
 ```sh
 # Policy work
 ayni init --dry-run

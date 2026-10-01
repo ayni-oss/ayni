@@ -135,6 +135,13 @@ from a less-trusted source. Do not pass secrets through build arguments or
 embed them in manifests. Use registry credentials with the narrowest scope and
 prefer external short-lived credentials managed by the container engine.
 
+Treat `AYNI_ENV_CERTIFICATE_SIGNING_KEY` as a signing secret. Ayni consumes it
+only for host-side manifest certification and current-image checks; the seed
+must never be added to the build context, Dockerfile, image configuration,
+logs, or repository. Keep
+`AYNI_ENV_CERTIFICATE_KEY_ID` stable for the corresponding public key and rotate
+the identifier when rotating keys.
+
 ## Release supply chain
 
 The managed environment-image release workflow pins third-party GitHub Actions

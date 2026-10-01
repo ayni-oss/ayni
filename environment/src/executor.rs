@@ -1,7 +1,6 @@
 //! Exact executor identity and repository-local execution build state.
 use crate::image::ImagePlan;
-use crate::{BackendError, Engine, concise_output};
-use ayni_adapters_common::exec::run_command;
+use crate::{BackendError, Engine, concise_output, run_oci_command};
 use ayni_core::{EnvironmentLock, sha256_fingerprint};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -10,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub(crate) const RECIPE_VERSION: &str = ayni_core::ENVIRONMENT_LOCK_RECIPE_VERSION;
-const RECORD_SCHEMA: &str = "1";
+const RECORD_SCHEMA: &str = "2";
 pub(crate) const EXECUTOR_LABEL: &str = "dev.ayni.environment.executor";
 pub(crate) const RECIPE_LABEL: &str = "dev.ayni.environment.recipe";
 
@@ -61,8 +60,27 @@ pub(crate) struct BuildRecord {
     pub executor: ExecutorIdentity,
     pub environment_fingerprint: String,
     pub preparation_digest: String,
+    pub certificate_schema_version: String,
+    pub certificate_key_id: String,
+    pub protected_content_root: String,
+    pub certificate_digest: String,
     pub image_tag: String,
     pub image_id: String,
+}
+
+impl BuildRecord {
+    pub(crate) fn certificate_identity(
+        &self,
+    ) -> Result<crate::certificate::CertificateIdentity, BackendError> {
+        let identity = crate::certificate::CertificateIdentity {
+            schema_version: self.certificate_schema_version.clone(),
+            key_id: self.certificate_key_id.clone(),
+            protected_content_root: self.protected_content_root.clone(),
+            certificate_digest: self.certificate_digest.clone(),
+        };
+        identity.validate()?;
+        Ok(identity)
+    }
 }
 
 pub(crate) fn rebuild(message: impl std::fmt::Display) -> BackendError {
@@ -103,6 +121,16 @@ fn state_path(root: &Path, create: bool) -> Result<PathBuf, BackendError> {
     Ok(path.join("build.json"))
 }
 
+fn valid_record_file(metadata: &fs::Metadata) -> bool {
+    metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() <= 65536
+}
+
+fn valid_record_header(record: &BuildRecord) -> bool {
+    record.schema_version == RECORD_SCHEMA
+        && record.recipe_version == RECIPE_VERSION
+        && valid_digest(&record.image_id)
+}
+
 pub(crate) fn read_record(root: &Path) -> Result<Option<BuildRecord>, BackendError> {
     let path = state_path(root, false)?;
     let metadata = match fs::symlink_metadata(&path) {
@@ -110,21 +138,21 @@ pub(crate) fn read_record(root: &Path) -> Result<Option<BuildRecord>, BackendErr
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(rebuild(error)),
     };
-    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 65536 {
+    if !valid_record_file(&metadata) {
         return Err(rebuild(
             "execution build record must be a bounded regular file",
         ));
     }
     let bytes = fs::read(path).map_err(rebuild)?;
     let record: BuildRecord = serde_json::from_slice(&bytes).map_err(rebuild)?;
-    if record.schema_version != RECORD_SCHEMA
-        || record.recipe_version != RECIPE_VERSION
-        || !valid_digest(&record.image_id)
-    {
+    if !valid_record_header(&record) {
         return Err(rebuild(
             "execution build record schema or recipe is incompatible",
         ));
     }
+    record
+        .certificate_identity()
+        .map_err(|error| rebuild(error.message))?;
     Ok(Some(record))
 }
 
@@ -166,7 +194,7 @@ pub(crate) fn engine_output(
         Engine::Docker => "docker",
         Engine::Podman => "podman",
     };
-    let output = run_command(root, name, args, Duration::from_secs(300)).map_err(rebuild)?;
+    let output = run_oci_command(root, name, args, Duration::from_secs(300)).map_err(rebuild)?;
     if !output.status.success() {
         return Err(rebuild(concise_output(&output.stderr)));
     }
@@ -204,7 +232,7 @@ pub(crate) fn executable_digest(
             "--network".into(),
             "none".into(),
             "--entrypoint".into(),
-            "sha256sum".into(),
+            "/usr/bin/sha256sum".into(),
             image.into(),
             "/usr/local/bin/ayni".into(),
         ],
@@ -316,12 +344,46 @@ fn inspect_executor(
     Ok(executor)
 }
 
+pub(crate) struct BuildPublicationLock {
+    _file: fs::File,
+}
+
+pub(crate) fn lock_publication(root: &Path) -> Result<BuildPublicationLock, BackendError> {
+    let path = state_path(root, true)?.with_file_name("build.lock");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
+            return Err(BackendError::execution(
+                "environment build lock must be a regular file",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(BackendError::execution(error.to_string())),
+    }
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| {
+            BackendError::execution(format!("cannot open environment build lock: {error}"))
+        })?;
+    file.lock().map_err(|error| {
+        BackendError::execution(format!(
+            "cannot lock environment image publication: {error}"
+        ))
+    })?;
+    Ok(BuildPublicationLock { _file: file })
+}
+
 pub(crate) fn persist(
     root: &Path,
     lock: &EnvironmentLock,
     plan: &ImagePlan,
     executor: ExecutorIdentity,
     image_id: String,
+    certification: &crate::certificate::Certification,
 ) -> Result<(), BackendError> {
     if !valid_digest(&image_id) {
         return Err(rebuild("built image has no immutable identity"));
@@ -332,6 +394,10 @@ pub(crate) fn persist(
         executor,
         environment_fingerprint: lock.fingerprint().into(),
         preparation_digest: plan.preparation_digest.clone(),
+        certificate_schema_version: certification.identity.schema_version.clone(),
+        certificate_key_id: certification.identity.key_id.clone(),
+        protected_content_root: certification.identity.protected_content_root.clone(),
+        certificate_digest: certification.identity.certificate_digest.clone(),
         image_tag: plan.tag.clone(),
         image_id,
     };
@@ -464,15 +530,29 @@ mod tests {
             executor: identity(),
             environment_fingerprint: "unused".into(),
             preparation_digest: "unused".into(),
+            certificate_schema_version: "1".into(),
+            certificate_key_id: "release-2026".into(),
+            protected_content_root: format!("sha256:{}", "d".repeat(64)),
+            certificate_digest: format!("sha256:{}", "e".repeat(64)),
             image_tag: "unused".into(),
             image_id: format!("sha256:{}", "f".repeat(64)),
         };
-        fs::write(path, serde_json::to_vec(&record).unwrap()).unwrap();
+        fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
         assert!(
             read_record(root.path())
                 .unwrap_err()
                 .message
                 .contains("schema or recipe")
+        );
+        let mut malformed_certificate = record;
+        malformed_certificate.schema_version = RECORD_SCHEMA.into();
+        malformed_certificate.protected_content_root = "not-a-digest".into();
+        fs::write(&path, serde_json::to_vec(&malformed_certificate).unwrap()).unwrap();
+        assert!(
+            read_record(root.path())
+                .unwrap_err()
+                .message
+                .contains("protected content root")
         );
     }
 

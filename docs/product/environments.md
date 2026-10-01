@@ -138,8 +138,8 @@ The lock intentionally omits credentials, host-specific paths, arbitrary system
 commands, and checkout-mutating instructions. Equivalent inputs produce stable
 lock output; a failed resolution preserves the previous lock.
 
-The environment plan schema is `0.4.0`, lock schema is `0.7.0`, and OCI
-image-label schema is `0.7.0`. Lock and execution recipe version `1` is checked
+The environment plan schema is `0.4.0`, lock schema is `0.8.0`, and OCI
+image-label schema is `0.8.0`. Lock and execution recipe version `1` is checked
 explicitly. These are separate from signal-artifact schema `0.4.0`, which is
 unchanged. Older locks are rejected: run `env lock`, then `env build` after
 upgrading. There is no legacy execution path.
@@ -173,10 +173,12 @@ fail rather than falling back to another executor.
 
 The build record under `.ayni/environment/build.json` contains its schema and
 recipe, executable SHA-256, source OCI reference/digest, source revision, Ayni
-version, platform, environment fingerprint, preparation digest, final image tag
-and immutable engine image ID. Doctor and every launch validate the record
-against the lock and actual image metadata. Missing or mismatched state requires
-`env build`; a mutable image tag alone never establishes readiness.
+version, platform, environment fingerprint, preparation digest, certificate
+schema and key ID, protected-content root, certificate digest, final image tag,
+and immutable engine image ID. Doctor and every launch validate the record,
+certificate files, and image labels against the lock and actual image metadata.
+Missing or mismatched state requires `env build`; a mutable image tag alone never
+establishes readiness.
 
 Managed check, verify and impact evidence includes an `execution.json` sidecar
 containing the pre-launch build record and SHA-256 of the corresponding quality
@@ -240,6 +242,34 @@ OCI build secret to the `mise install` layers. The credential is not written to
 the lock, build context, generated Dockerfile, image metadata, or image layers.
 Without it, Mise's GitHub release lookups remain subject to anonymous API rate
 limits.
+
+Every `env build` also requires both certificate-signing variables:
+
+| Variable | Contract |
+| --- | --- |
+| `AYNI_ENV_CERTIFICATE_SIGNING_KEY` | A 32-byte Ed25519 seed encoded as exactly 64 lowercase hexadecimal characters. It is consumed by the host process and is never sent to the OCI build. |
+| `AYNI_ENV_CERTIFICATE_KEY_ID` | The stable trust-policy key identifier placed in the certificate, image label, and build record. It may contain ASCII letters, digits, `.`, `-`, and `_`. |
+
+Ayni first builds the complete runtime/tool image without signing material. It
+then hashes every regular file and records every symlink under the immutable
+runtime roots, signs the canonical manifest root on the host, and builds a
+second image that adds only the certificate and manifest. Generation, signing,
+installation, label validation, file-mode validation, or record persistence
+failure aborts the build; the final mutable tag is applied only after the
+candidate image validates.
+
+Certified images contain these root-owned, mode `0444` files, readable by the
+unprivileged `ayni` user:
+
+- `/etc/ayni/runtime.json` — canonical signed environment-certificate envelope;
+- `/etc/ayni/protected-content.manifest` — deterministic JSON Lines file and
+  symlink inventory whose byte-level SHA-256 is the certificate's
+  `protected_content_root`.
+
+The protected roots include the Ayni and Mise executables, locked Mise
+configuration, `/opt/ayni` runtime/tool and prepared dependency content, and the
+Rustup tree when present. Mutable home caches, temporary paths, `/workspace`,
+and mounted source inputs are excluded.
 
 Project tools for npm, pnpm, uv, and Gradle must already be represented in
 their native project inputs. Cargo and Go analysis tools may be provisioned from
@@ -431,8 +461,10 @@ rules](/product/runtime).
 A published Ayni environment can run `ayni check` without a local container
 engine. Ayni recognizes this mode only when `/etc/ayni/runtime.json` is a
 root-owned regular file containing the portable environment-certificate
-envelope. The marker is runtime provenance, not image admission: this release
-does not verify its signature or protected filesystem contents.
+envelope. Ayni-built images also retain the signed inventory at
+`/etc/ayni/protected-content.manifest`. The marker is runtime provenance, not
+external-image admission: this release does not yet admit an independently
+supplied image by verifying its signature and protected filesystem contents.
 
 In that mode, Ayni uses `AYNI_SOURCE_ROOT` when set, otherwise its current
 working directory. The selected source must provide regular `.ayni.toml` and

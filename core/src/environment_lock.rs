@@ -525,7 +525,7 @@ fn normalize_lock_parts(
     provisioning_base: &mut ProvisioningBase,
     certificate_trust_policy: &LockedCertificateTrustPolicy,
     platforms: &mut Vec<TargetPlatform>,
-    targets: &mut Vec<LockedTargetEnvironment>,
+    targets: &mut [LockedTargetEnvironment],
     tools: &mut Vec<LockedMiseTool>,
     debian_packages: &mut Vec<LockedDebianPackage>,
     resources: EnvironmentResourceLimits,

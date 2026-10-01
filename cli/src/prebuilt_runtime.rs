@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 pub(crate) const METADATA_PATH: &str = "/etc/ayni/runtime.json";
+const PROTECTED_EXECUTABLE_PATH: &str = "/usr/local/bin/ayni";
 static ACTIVE_RUNTIME: OnceLock<RuntimeIdentity> = OnceLock::new();
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -27,6 +28,9 @@ pub(crate) fn discover() -> Result<Option<RuntimeIdentity>, ApplicationError> {
             )));
         }
     };
+    if !running_protected_executable()? {
+        return Ok(None);
+    }
     validate_metadata_file(path, &metadata)?;
     let bytes = fs::read(path).map_err(|error| {
         ApplicationError::environment(format!(
@@ -124,6 +128,24 @@ pub(crate) fn active() -> bool {
     ACTIVE_RUNTIME.get().is_some()
 }
 
+fn running_protected_executable() -> Result<bool, ApplicationError> {
+    let current = std::env::current_exe().map_err(|error| {
+        ApplicationError::environment(format!(
+            "failed to identify the running Ayni executable: {error}"
+        ))
+    })?;
+    let protected = match fs::canonicalize(PROTECTED_EXECUTABLE_PATH) {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(ApplicationError::environment(format!(
+                "failed to resolve protected Ayni executable {PROTECTED_EXECUTABLE_PATH}: {error}"
+            )));
+        }
+    };
+    Ok(current == protected)
+}
+
 fn source_root() -> Result<PathBuf, ApplicationError> {
     let configured = std::env::var_os("AYNI_SOURCE_ROOT")
         .filter(|value| !value.is_empty())
@@ -171,6 +193,11 @@ fn validate_metadata_file(path: &Path, metadata: &fs::Metadata) -> Result<(), Ap
 mod tests {
     use super::*;
     use ayni_core::EnvironmentCertificate;
+
+    #[test]
+    fn test_binary_does_not_claim_the_protected_runtime_identity() {
+        assert!(!running_protected_executable().unwrap());
+    }
 
     #[test]
     fn runtime_identity_serializes_certificate_claims() {

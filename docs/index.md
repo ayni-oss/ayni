@@ -52,7 +52,9 @@ Installing the CLI is separate from provisioning a repository environment. Ayni 
 
 ## Start with a reviewable proposal
 
-After [installing Ayni](/getting-started/installation):
+After [installing Ayni](/getting-started/installation), configure the
+[environment certificate signing variables](/product/environments#build-and-dependency-preparation)
+used by `env build`:
 
 ```sh
 ayni init --dry-run

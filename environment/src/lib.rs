@@ -4,7 +4,11 @@
 //! responsible for ecosystem semantics; the CLI owns user intent and rendering.
 
 use ayni_core::{DockerAccess, EnvironmentCapabilities};
+use std::path::Path;
+use std::process::{Command, Output};
+use std::time::Duration;
 
+mod certificate;
 mod executor;
 pub use executor::execution_build_record;
 mod image;
@@ -30,6 +34,35 @@ pub use storage::{
     StoragePruneResult, StorageReport, StorageStateGeneration, prune_storage,
     prune_storage_prepared, storage_report, storage_report_prepared,
 };
+
+pub(crate) fn run_oci_command(
+    workdir: &Path,
+    program: &str,
+    args: &[String],
+    timeout: Duration,
+) -> Result<Output, String> {
+    ayni_adapters_common::exec::run_command(workdir, program, args, timeout)
+}
+
+pub(crate) fn run_oci_command_streaming_truncated(
+    workdir: &Path,
+    program: &str,
+    args: &[String],
+    timeout: Duration,
+    on_line: impl FnMut(&str),
+) -> Result<ayni_adapters_common::exec::TruncatedOutput, String> {
+    ayni_adapters_common::exec::run_command_streaming_truncated(
+        workdir, program, args, timeout, on_line,
+    )
+}
+
+pub(crate) fn oci_process(program: &str) -> Command {
+    let mut command = Command::new(program);
+    for name in certificate::SIGNING_ENVIRONMENT {
+        command.env_remove(name);
+    }
+    command
+}
 
 /// Merge backend packages required by declared execution capabilities into the
 /// repository's explicitly configured Debian packages.

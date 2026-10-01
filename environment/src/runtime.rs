@@ -9,7 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Stdio};
+#[cfg(test)]
+use std::process::Command;
+use std::process::Stdio;
 
 pub const WORKSPACE: &str = "/workspace";
 const CHECKOUT_SOURCE: &str = "/opt/ayni/checkout";
@@ -676,7 +678,7 @@ fn append_known_docker_socket_args(args: &mut Vec<String>, socket: &Path, gids: 
 }
 
 fn active_docker_context_host() -> Option<String> {
-    let output = Command::new("docker")
+    let output = crate::oci_process("docker")
         .args([
             "context",
             "inspect",
@@ -855,7 +857,7 @@ fn append_command(
 }
 
 fn execute_launch(engine: Engine, args: &[String]) -> Result<i32, BackendError> {
-    let status = Command::new(engine_name(engine))
+    let status = crate::oci_process(engine_name(engine))
         .args(args)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -871,7 +873,7 @@ fn execute_launch_captured(
     engine: Engine,
     args: &[String],
 ) -> Result<CapturedLaunch, BackendError> {
-    let output = Command::new(engine_name(engine))
+    let output = crate::oci_process(engine_name(engine))
         .args(args)
         .output()
         .map_err(|error| {

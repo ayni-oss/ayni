@@ -1,13 +1,17 @@
 use super::canonical_root;
+use crate::certificate::{
+    CERTIFICATE_KEY_ID_LABEL, CERTIFICATE_PATH, CERTIFICATE_SCHEMA_LABEL, CertificateIdentity,
+    Certification, MANIFEST_PATH, PROTECTED_CONTENT_ROOT_LABEL, SigningMaterial,
+};
 use crate::image::{
     IMAGE_AYNI_LABEL, IMAGE_BASE_LABEL, IMAGE_LOCK_LABEL, IMAGE_MISE_LABEL, IMAGE_OWNER_LABEL,
     IMAGE_OWNER_VALUE, IMAGE_PLATFORM_LABEL, IMAGE_PREPARATION_LABEL, IMAGE_SCHEMA_LABEL,
     IMAGE_SCHEMA_VERSION, ImagePlan, MISE_GITHUB_TOKEN_SECRET, image_plan_with_preparation,
 };
-use crate::{BackendError, concise_output, read_lock};
-use ayni_adapters_common::exec::{
-    DEFAULT_TOOL_TIMEOUT, run_command, run_command_streaming_truncated,
+use crate::{
+    BackendError, concise_output, read_lock, run_oci_command, run_oci_command_streaming_truncated,
 };
+use ayni_adapters_common::exec::DEFAULT_TOOL_TIMEOUT;
 use ayni_core::{DependencyPreparationPlan, EnvironmentLock, Language};
 use std::collections::BTreeMap;
 use std::env;
@@ -17,6 +21,29 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+const FILE_INVENTORY_SCRIPT: &str = r#"
+set -eu
+for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
+    [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
+done
+file_list=$(/usr/bin/mktemp /tmp/ayni-protected-files.XXXXXX)
+sorted_list=$(/usr/bin/mktemp /tmp/ayni-protected-files-sorted.XXXXXX)
+trap '/usr/bin/rm -f "$file_list" "$sorted_list"' 0 HUP INT TERM
+for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup; do
+    [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type f -print0 >> "$file_list"
+done
+LC_ALL=C /usr/bin/sort -z "$file_list" -o "$sorted_list"
+/usr/bin/xargs -0 -r /usr/bin/sha256sum --zero < "$sorted_list"
+"#;
+const SYMLINK_INVENTORY_SCRIPT: &str = r#"
+set -eu
+for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
+    [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
+done
+for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup; do
+    [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type l -printf '%p\0%l\0'
+done
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Engine {
@@ -104,7 +131,7 @@ fn engine_usable(engine: Engine) -> bool {
     };
     env::current_dir()
         .ok()
-        .and_then(|cwd| run_command(&cwd, engine_name(engine), &args, COMMAND_TIMEOUT).ok())
+        .and_then(|cwd| run_oci_command(&cwd, engine_name(engine), &args, COMMAND_TIMEOUT).ok())
         .is_some_and(|output| output.status.success())
 }
 
@@ -158,7 +185,7 @@ fn docker_security_posture(root: &Path) -> String {
         String::from("--format"),
         String::from("{{json .SecurityOptions}}"),
     ];
-    let Ok(output) = run_command(root, "docker", &args, COMMAND_TIMEOUT) else {
+    let Ok(output) = run_oci_command(root, "docker", &args, COMMAND_TIMEOUT) else {
         return String::from("unavailable");
     };
     if !output.status.success() {
@@ -183,7 +210,7 @@ fn podman_security_posture(root: &Path) -> String {
         String::from("--format"),
         String::from("json"),
     ];
-    let Ok(output) = run_command(root, "podman", &args, COMMAND_TIMEOUT) else {
+    let Ok(output) = run_oci_command(root, "podman", &args, COMMAND_TIMEOUT) else {
         return String::from("unavailable");
     };
     if !output.status.success() {
@@ -261,41 +288,101 @@ pub fn build_prepared_with_cache(
 ) -> Result<String, BackendError> {
     let root = canonical_root(repo_root)?;
     let lock = read_lock(&root)?;
+    let signing = SigningMaterial::from_env()?;
     let mut plan = image_plan_with_preparation(&lock, preparations)?;
     let engine = detect_engine()?;
     cache.build_args(engine)?;
     let executor = crate::executor::resolve(&root, engine, &plan.platform, executor_image)?;
     crate::executor::bind(&mut plan, &executor);
     if cache.to.is_empty()
-        && current_image_plan(&root, engine, &lock, preparations)
-            .is_ok_and(|current| current.dockerfile == plan.dockerfile)
+        && current_image_state(&root, engine, &lock, preparations, Some(&signing))
+            .is_ok_and(|(current, _)| current.dockerfile == plan.dockerfile)
     {
         return Ok(format!("current {}", plan.tag));
     }
     crate::executor::validate_substrate(&root, engine, &lock)?;
-    build_image(&root, engine, &plan, &lock, preparations, cache)?;
-    validate_assembly(&root, engine, &lock, &plan, executor)?;
-    current_image_plan(&root, engine, &lock, preparations)?;
+    let candidate = build_image(
+        &root,
+        engine,
+        &plan,
+        &lock,
+        preparations,
+        cache,
+        &signing,
+        &executor,
+    )?;
+    publish_certified_image(&root, engine, &lock, &plan, executor, &candidate)?;
     Ok(format!("built {}", plan.tag))
 }
 
-fn validate_assembly(
+struct CertifiedImage {
+    certification: Certification,
+    image_id: String,
+}
+
+fn publish_certified_image(
     root: &Path,
     engine: Engine,
     lock: &EnvironmentLock,
     plan: &ImagePlan,
     executor: crate::executor::ExecutorIdentity,
+    candidate: &CertifiedImage,
 ) -> Result<(), BackendError> {
-    if crate::executor::executable_digest(root, engine, &plan.tag)? != executor.executable_digest {
+    let _publication_lock = crate::executor::lock_publication(root)?;
+    let previous_image = tagged_image_id(root, engine, &plan.tag)?;
+    publish_image_tag(root, engine, &candidate.image_id, &plan.tag)?;
+    let publication = (|| {
+        let metadata = crate::executor::inspect(root, engine, &plan.tag)?;
+        if metadata["Id"].as_str() != Some(candidate.image_id.as_str()) {
+            return Err(BackendError::environment(
+                "published environment tag does not resolve to the validated candidate image",
+            ));
+        }
+        crate::executor::persist(
+            root,
+            lock,
+            plan,
+            executor,
+            candidate.image_id.clone(),
+            &candidate.certification,
+        )
+    })();
+    if let Err(error) = publication {
+        let rollback = match previous_image {
+            Some(previous) => publish_image_tag(root, engine, &previous, &plan.tag),
+            None => remove_image_tag(root, engine, &plan.tag),
+        };
+        return match rollback {
+            Ok(()) => Err(error),
+            Err(rollback) => Err(BackendError::execution(format!(
+                "{}; additionally failed to restore the previous environment image tag: {}",
+                error.message, rollback.message
+            ))),
+        };
+    }
+    Ok(())
+}
+
+fn validate_assembled_image(
+    root: &Path,
+    engine: Engine,
+    plan: &ImagePlan,
+    lock: &EnvironmentLock,
+    executor: &crate::executor::ExecutorIdentity,
+    image: &str,
+) -> Result<(), BackendError> {
+    let mut assembled_plan = plan.clone();
+    assembled_plan.tag = image.into();
+    validate_image(engine, &assembled_plan, lock, None)?;
+    if crate::executor::executable_digest(root, engine, image)? != executor.executable_digest {
         return Err(crate::executor::rebuild(
             "assembled executable differs from its source image",
         ));
     }
-    let metadata = crate::executor::inspect(root, engine, &plan.tag)?;
-    let image_id = metadata["Id"].as_str().unwrap_or("").to_owned();
-    crate::executor::persist(root, lock, plan, executor, image_id)
+    Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_image(
     root: &Path,
     engine: Engine,
@@ -303,31 +390,103 @@ fn build_image(
     lock: &EnvironmentLock,
     preparations: &[DependencyPreparationPlan],
     cache: &BuildCache,
-) -> Result<(), BackendError> {
+    signing: &SigningMaterial,
+    executor: &crate::executor::ExecutorIdentity,
+) -> Result<CertifiedImage, BackendError> {
     let input = BuildInput::create(root, plan, preparations)?;
-    let mut args = cache.build_args(engine)?;
-    args.extend([
+
+    let assembled_iid = input.path.join("assembled.iid");
+    let assembled_tag = input.staging_tag(plan);
+    let mut assembled_args = cache.build_args(engine)?;
+    assembled_args.extend([
         "--tag".to_owned(),
-        plan.tag.clone(),
+        assembled_tag.clone(),
+        "--iidfile".to_owned(),
+        assembled_iid.to_string_lossy().into_owned(),
         "--platform".to_owned(),
         plan.platform.clone(),
     ]);
-    args.extend(mise_github_token_secret_args());
-    args.extend([
+    assembled_args.extend(mise_github_token_secret_args());
+    assembled_args.extend([
         "--file".to_owned(),
         input.path.join("Dockerfile").to_string_lossy().into_owned(),
         input.path.to_string_lossy().into_owned(),
     ]);
-    let captured = run_command_streaming_truncated(
+    run_image_build(
         &input.path,
+        engine,
+        &assembled_args,
+        "assembled environment",
+    )?;
+    let assembled_image = read_image_id(&assembled_iid)?;
+    let _assembled_tag = TemporaryImageTag {
+        root: root.to_path_buf(),
+        engine,
+        tag: assembled_tag.clone(),
+    };
+    validate_assembled_image(root, engine, plan, lock, executor, &assembled_image)?;
+
+    let manifest = generate_manifest(root, engine, &assembled_image)?;
+    let certification = crate::certificate::create(lock, plan, manifest, signing)?;
+    input.add_certification(&assembled_tag, &certification)?;
+
+    let certified_iid = input.path.join("certified.iid");
+    let certified_args = vec![
+        "build".to_owned(),
+        "--iidfile".to_owned(),
+        certified_iid.to_string_lossy().into_owned(),
+        "--platform".to_owned(),
+        plan.platform.clone(),
+        "--file".to_owned(),
+        input
+            .path
+            .join("Certified.Dockerfile")
+            .to_string_lossy()
+            .into_owned(),
+        input.path.to_string_lossy().into_owned(),
+    ];
+    run_image_build(
+        &input.path,
+        engine,
+        &certified_args,
+        "certified environment",
+    )?;
+    let certified_image = read_image_id(&certified_iid)?;
+    let mut candidate = plan.clone();
+    candidate.tag.clone_from(&certified_image);
+    validate_image(engine, &candidate, lock, Some(&certification.identity))?;
+    validate_certified_image(
+        root,
+        engine,
+        &certified_image,
+        lock,
+        plan,
+        &certification.identity,
+        Some(&certification),
+        true,
+    )?;
+    Ok(CertifiedImage {
+        certification,
+        image_id: certified_image,
+    })
+}
+
+fn run_image_build(
+    cwd: &Path,
+    engine: Engine,
+    args: &[String],
+    description: &str,
+) -> Result<(), BackendError> {
+    let captured = run_oci_command_streaming_truncated(
+        cwd,
         engine_name(engine),
-        &args,
+        args,
         DEFAULT_TOOL_TIMEOUT,
         |line| eprintln!("{line}"),
     )
     .map_err(|error| {
         BackendError::execution(format!(
-            "failed to run {} build: {error}",
+            "failed to build {description} with {}: {error}",
             engine_name(engine)
         ))
     })?;
@@ -337,15 +496,100 @@ fn build_image(
             captured.stdout_truncated_bytes, captured.stderr_truncated_bytes
         );
     }
-    let output = captured.output;
+    if !captured.output.status.success() {
+        return Err(BackendError::execution(format!(
+            "{} build failed while creating {description}: {}",
+            engine_name(engine),
+            concise_output(&captured.output.stderr)
+        )));
+    }
+    Ok(())
+}
+
+fn read_image_id(path: &Path) -> Result<String, BackendError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        BackendError::execution(format!("image build did not produce an image ID: {error}"))
+    })?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 128 {
+        return Err(BackendError::execution(
+            "image build produced an invalid image ID file",
+        ));
+    }
+    let image_id = fs::read_to_string(path).map_err(|error| {
+        BackendError::execution(format!("failed to read built image ID: {error}"))
+    })?;
+    let image_id = image_id.trim().to_owned();
+    if !crate::executor::valid_digest(&image_id) {
+        return Err(BackendError::execution(
+            "image build produced an invalid immutable image ID",
+        ));
+    }
+    Ok(image_id)
+}
+
+fn tagged_image_id(root: &Path, engine: Engine, tag: &str) -> Result<Option<String>, BackendError> {
+    let args = [
+        "image".to_owned(),
+        "inspect".to_owned(),
+        "--format".to_owned(),
+        "{{.Id}}".to_owned(),
+        tag.to_owned(),
+    ];
+    let output =
+        run_oci_command(root, engine_name(engine), &args, COMMAND_TIMEOUT).map_err(|error| {
+            BackendError::execution(format!("failed to inspect environment image tag: {error}"))
+        })?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let image_id = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if !crate::executor::valid_digest(&image_id) {
+        return Err(BackendError::environment(
+            "environment image tag resolved to an invalid immutable image ID",
+        ));
+    }
+    Ok(Some(image_id))
+}
+
+fn remove_image_tag(root: &Path, engine: Engine, tag: &str) -> Result<(), BackendError> {
+    let args = ["image".to_owned(), "rm".to_owned(), tag.to_owned()];
+    let output =
+        run_oci_command(root, engine_name(engine), &args, COMMAND_TIMEOUT).map_err(|error| {
+            BackendError::execution(format!("failed to remove environment image tag: {error}"))
+        })?;
     if !output.status.success() {
         return Err(BackendError::execution(format!(
-            "{} build failed: {}",
-            engine_name(engine),
+            "failed to remove environment image tag: {}",
             concise_output(&output.stderr)
         )));
     }
-    validate_image(engine, plan, lock)?;
+    Ok(())
+}
+
+fn publish_image_tag(
+    root: &Path,
+    engine: Engine,
+    image_id: &str,
+    tag: &str,
+) -> Result<(), BackendError> {
+    let args = [
+        "image".to_owned(),
+        "tag".to_owned(),
+        image_id.to_owned(),
+        tag.to_owned(),
+    ];
+    let output =
+        run_oci_command(root, engine_name(engine), &args, COMMAND_TIMEOUT).map_err(|error| {
+            BackendError::execution(format!(
+                "failed to publish validated environment image tag: {error}"
+            ))
+        })?;
+    if !output.status.success() {
+        return Err(BackendError::execution(format!(
+            "failed to publish validated environment image tag: {}",
+            concise_output(&output.stderr)
+        )));
+    }
     Ok(())
 }
 
@@ -410,6 +654,76 @@ impl BuildInput {
             "failed to allocate a unique generated build input",
         ))
     }
+
+    fn staging_tag(&self, plan: &ImagePlan) -> String {
+        let identity =
+            ayni_core::sha256_fingerprint(format!("{}\0{}", self.path.to_string_lossy(), plan.tag));
+        format!("ayni-env-stage:{}", &identity[7..39])
+    }
+
+    fn add_certification(
+        &self,
+        assembled_image: &str,
+        certification: &Certification,
+    ) -> Result<(), BackendError> {
+        if !assembled_image
+            .strip_prefix("ayni-env-stage:")
+            .is_some_and(|tag| {
+                !tag.is_empty()
+                    && tag
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+            })
+        {
+            return Err(BackendError::execution(
+                "assembled environment image has an invalid private tag",
+            ));
+        }
+        let dockerfile = format!(
+            "FROM {assembled_image}\nUSER root\nCOPY --chown=0:0 certificate.json {certificate_path}\nCOPY --chown=0:0 protected-content.manifest {manifest_path}\nRUN /usr/bin/chown 0:0 {certificate_path} {manifest_path} \\\n    && /usr/bin/chmod 0444 {certificate_path} {manifest_path}\nLABEL {owner_label}=\"{owner}\" \\\n      {schema_label}=\"{schema}\" \\\n      {key_label}=\"{key_id}\" \\\n      {root_label}=\"{content_root}\"\nUSER 10001:10001\nWORKDIR /workspace\n",
+            certificate_path = CERTIFICATE_PATH,
+            manifest_path = MANIFEST_PATH,
+            owner_label = IMAGE_OWNER_LABEL,
+            owner = IMAGE_OWNER_VALUE,
+            schema_label = CERTIFICATE_SCHEMA_LABEL,
+            schema = certification.identity.schema_version,
+            key_label = CERTIFICATE_KEY_ID_LABEL,
+            key_id = certification.identity.key_id,
+            root_label = PROTECTED_CONTENT_ROOT_LABEL,
+            content_root = certification.identity.protected_content_root,
+        );
+        write_new_file(
+            &self.path.join("certificate.json"),
+            &certification.certificate,
+        )
+        .and_then(|()| {
+            write_new_file(
+                &self.path.join("protected-content.manifest"),
+                &certification.manifest,
+            )
+        })
+        .and_then(|()| write_new_file(&self.path.join("Certified.Dockerfile"), &dockerfile))
+        .map_err(|error| {
+            BackendError::execution(format!("failed to write certified image input: {error}"))
+        })
+    }
+}
+
+struct TemporaryImageTag {
+    root: PathBuf,
+    engine: Engine,
+    tag: String,
+}
+
+impl Drop for TemporaryImageTag {
+    fn drop(&mut self) {
+        let _ = run_oci_command(
+            &self.root,
+            engine_name(self.engine),
+            &["image".into(), "rm".into(), self.tag.clone()],
+            COMMAND_TIMEOUT,
+        );
+    }
 }
 
 impl Drop for BuildInput {
@@ -444,46 +758,131 @@ pub(super) fn write_new_file(path: &Path, content: &str) -> std::io::Result<()> 
     file.sync_all()
 }
 
-pub(super) fn validate_image(
+fn image_process_output(
+    root: &Path,
     engine: Engine,
-    plan: &ImagePlan,
-    lock: &EnvironmentLock,
-) -> Result<(), BackendError> {
-    let args = vec![
-        "image".to_owned(),
-        "inspect".to_owned(),
-        "--format".to_owned(),
-        "{{json .Config.Labels}}".to_owned(),
-        plan.tag.clone(),
+    image: &str,
+    entrypoint: &str,
+    arguments: &[&str],
+    description: &str,
+) -> Result<Vec<u8>, BackendError> {
+    let mut args = vec![
+        "run".to_owned(),
+        "--rm".to_owned(),
+        "--network".to_owned(),
+        "none".to_owned(),
+        "--entrypoint".to_owned(),
+        entrypoint.to_owned(),
+        image.to_owned(),
     ];
-    let cwd = env::current_dir().map_err(|error| {
-        BackendError::execution(format!("failed to establish current directory: {error}"))
-    })?;
-    let output = run_command(&cwd, engine_name(engine), &args, COMMAND_TIMEOUT).map_err(|_| {
-        BackendError::environment(format!(
-            "environment image {} is missing; run `ayni env build`",
-            plan.tag
-        ))
-    })?;
+    args.extend(arguments.iter().map(|argument| (*argument).to_owned()));
+    let output = run_oci_command(root, engine_name(engine), &args, DEFAULT_TOOL_TIMEOUT).map_err(
+        |error| {
+            BackendError::environment(format!(
+                "failed to {description} from environment image: {error}"
+            ))
+        },
+    )?;
     if !output.status.success() {
         return Err(BackendError::environment(format!(
-            "environment image {} is missing; run `ayni env build`",
-            plan.tag
+            "failed to {description} from environment image: {}",
+            concise_output(&output.stderr)
         )));
     }
-    let labels: BTreeMap<String, String> =
-        serde_json::from_slice(&output.stdout).map_err(|error| {
-            BackendError::environment(format!(
-                "environment image {} has invalid labels: {error}; run `ayni env build`",
-                plan.tag
-            ))
-        })?;
-    let current = labels
-        .get(IMAGE_OWNER_LABEL)
-        .is_some_and(|value| value == IMAGE_OWNER_VALUE)
-        && labels
-            .get(IMAGE_LOCK_LABEL)
-            .is_some_and(|value| value == lock.fingerprint())
+    Ok(output.stdout)
+}
+
+fn generate_manifest(root: &Path, engine: Engine, image: &str) -> Result<String, BackendError> {
+    let files = image_process_output(
+        root,
+        engine,
+        image,
+        "/bin/sh",
+        &["-c", FILE_INVENTORY_SCRIPT],
+        "generate protected-content file hashes",
+    )?;
+    let symlinks = image_process_output(
+        root,
+        engine,
+        image,
+        "/bin/sh",
+        &["-c", SYMLINK_INVENTORY_SCRIPT],
+        "generate protected-content symlink inventory",
+    )?;
+    crate::certificate::manifest_from_inventory(&files, &symlinks)
+}
+
+fn read_image_text_file(
+    root: &Path,
+    engine: Engine,
+    image: &str,
+    path: &str,
+    description: &str,
+) -> Result<String, BackendError> {
+    let bytes = image_process_output(root, engine, image, "/usr/bin/cat", &[path], description)?;
+    String::from_utf8(bytes).map_err(|_| {
+        BackendError::environment(format!(
+            "installed environment {description} is not valid UTF-8"
+        ))
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_certified_image(
+    root: &Path,
+    engine: Engine,
+    image: &str,
+    lock: &EnvironmentLock,
+    plan: &ImagePlan,
+    identity: &CertificateIdentity,
+    expected: Option<&Certification>,
+    regenerate_manifest: bool,
+) -> Result<(), BackendError> {
+    let metadata = image_process_output(
+        root,
+        engine,
+        image,
+        "/bin/sh",
+        &[
+            "-c",
+            "set -eu; for path in \"$1\" \"$2\"; do [ -f \"$path\" ] && [ ! -L \"$path\" ]; done; /usr/bin/stat -c '%u:%g:%a' \"$1\" \"$2\"",
+            "ayni-certificate-metadata",
+            CERTIFICATE_PATH,
+            MANIFEST_PATH,
+        ],
+        "validate certificate file metadata",
+    )?;
+    if metadata != b"0:0:444\n0:0:444\n" {
+        return Err(BackendError::environment(
+            "installed environment certificate and manifest must be root:root regular files with mode 0444",
+        ));
+    }
+    let certificate = read_image_text_file(root, engine, image, CERTIFICATE_PATH, "certificate")?;
+    let manifest = read_image_text_file(root, engine, image, MANIFEST_PATH, "manifest")?;
+    crate::certificate::validate_installed(&certificate, &manifest, lock, plan, identity)?;
+    if let Some(expected) = expected
+        && (certificate != expected.certificate || manifest != expected.manifest)
+    {
+        return Err(BackendError::environment(
+            "installed environment certification bytes differ from generated bytes",
+        ));
+    }
+    if regenerate_manifest && generate_manifest(root, engine, image)? != manifest {
+        return Err(BackendError::environment(
+            "installed protected-content manifest differs from the assembled final image",
+        ));
+    }
+    Ok(())
+}
+
+fn base_image_labels_match(
+    labels: &BTreeMap<String, String>,
+    plan: &ImagePlan,
+    lock: &EnvironmentLock,
+) -> bool {
+    labels
+        .get(IMAGE_LOCK_LABEL)
+        .is_some_and(|value| value == lock.fingerprint())
         && labels
             .get(IMAGE_BASE_LABEL)
             .is_some_and(|value| value == &lock.provisioning_base().digest)
@@ -501,7 +900,68 @@ pub(super) fn validate_image(
             .is_some_and(|value| value == &plan.platform)
         && labels
             .get(IMAGE_PREPARATION_LABEL)
-            .is_some_and(|value| value == &plan.preparation_digest);
+            .is_some_and(|value| value == &plan.preparation_digest)
+}
+
+fn certificate_labels_match(
+    labels: &BTreeMap<String, String>,
+    certificate: &CertificateIdentity,
+) -> bool {
+    labels
+        .get(IMAGE_OWNER_LABEL)
+        .is_some_and(|value| value == IMAGE_OWNER_VALUE)
+        && labels
+            .get(CERTIFICATE_SCHEMA_LABEL)
+            .is_some_and(|value| value == &certificate.schema_version)
+        && labels
+            .get(CERTIFICATE_KEY_ID_LABEL)
+            .is_some_and(|value| value == &certificate.key_id)
+        && labels
+            .get(PROTECTED_CONTENT_ROOT_LABEL)
+            .is_some_and(|value| value == &certificate.protected_content_root)
+}
+
+pub(super) fn validate_image(
+    engine: Engine,
+    plan: &ImagePlan,
+    lock: &EnvironmentLock,
+    certificate: Option<&CertificateIdentity>,
+) -> Result<(), BackendError> {
+    if let Some(certificate) = certificate {
+        certificate.validate()?;
+    }
+    let args = vec![
+        "image".to_owned(),
+        "inspect".to_owned(),
+        "--format".to_owned(),
+        "{{json .Config.Labels}}".to_owned(),
+        plan.tag.clone(),
+    ];
+    let cwd = env::current_dir().map_err(|error| {
+        BackendError::execution(format!("failed to establish current directory: {error}"))
+    })?;
+    let output =
+        run_oci_command(&cwd, engine_name(engine), &args, COMMAND_TIMEOUT).map_err(|_| {
+            BackendError::environment(format!(
+                "environment image {} is missing; run `ayni env build`",
+                plan.tag
+            ))
+        })?;
+    if !output.status.success() {
+        return Err(BackendError::environment(format!(
+            "environment image {} is missing; run `ayni env build`",
+            plan.tag
+        )));
+    }
+    let labels: BTreeMap<String, String> =
+        serde_json::from_slice(&output.stdout).map_err(|error| {
+            BackendError::environment(format!(
+                "environment image {} has invalid labels: {error}; run `ayni env build`",
+                plan.tag
+            ))
+        })?;
+    let current = base_image_labels_match(&labels, plan, lock)
+        && certificate.is_none_or(|certificate| certificate_labels_match(&labels, certificate));
     if current {
         Ok(())
     } else {
@@ -512,6 +972,39 @@ pub(super) fn validate_image(
     }
 }
 
+fn current_image_state(
+    root: &Path,
+    engine: Engine,
+    lock: &EnvironmentLock,
+    preparations: &[DependencyPreparationPlan],
+    signing: Option<&SigningMaterial>,
+) -> Result<(ImagePlan, crate::executor::BuildRecord), BackendError> {
+    let plan = image_plan_with_preparation(lock, preparations)?;
+    let (mut plan, record) = crate::executor::recorded_plan(root, lock, plan)?;
+    let identity = record.certificate_identity()?;
+    validate_image(engine, &plan, lock, Some(&identity))?;
+    crate::executor::validate_record_image(root, engine, &plan, &record)?;
+    let expected = signing
+        .map(|signing| {
+            read_image_text_file(root, engine, &plan.tag, MANIFEST_PATH, "manifest")
+                .and_then(|manifest| crate::certificate::create(lock, &plan, manifest, signing))
+        })
+        .transpose()?;
+    validate_certified_image(
+        root,
+        engine,
+        &plan.tag,
+        lock,
+        &plan,
+        &identity,
+        expected.as_ref(),
+        false,
+    )?;
+    // Launch by immutable engine identity, even if a tag moves after validation.
+    plan.tag.clone_from(&record.image_id);
+    Ok((plan, record))
+}
+
 /// Require the exact build record and engine image before every managed launch.
 pub(super) fn current_image_plan(
     root: &Path,
@@ -519,18 +1012,20 @@ pub(super) fn current_image_plan(
     lock: &EnvironmentLock,
     preparations: &[DependencyPreparationPlan],
 ) -> Result<ImagePlan, BackendError> {
-    let plan = image_plan_with_preparation(lock, preparations)?;
-    let (mut plan, record) = crate::executor::recorded_plan(root, lock, plan)?;
-    validate_image(engine, &plan, lock)?;
-    crate::executor::validate_record_image(root, engine, &plan, &record)?;
-    // Launch by immutable engine identity, even if a tag moves after validation.
-    plan.tag = record.image_id;
-    Ok(plan)
+    current_image_state(root, engine, lock, preparations, None).map(|(plan, _)| plan)
 }
 
 #[cfg(test)]
 mod cache_tests {
     use super::*;
+
+    #[test]
+    fn file_inventory_checks_each_generation_stage_without_a_pipeline() {
+        assert!(!FILE_INVENTORY_SCRIPT.contains(" | "));
+        for command in ["/usr/bin/find", "/usr/bin/sort", "/usr/bin/xargs"] {
+            assert!(FILE_INVENTORY_SCRIPT.contains(command));
+        }
+    }
 
     #[test]
     fn external_cache_requires_buildx_and_keeps_the_result_locally_loadable() {
