@@ -34,6 +34,7 @@ where
 {
     let (program, args, engine) = coverage_command(context, true);
     let coverage_path = prepare_coverage_report(context)?;
+    super::test::prepare_report(context)?;
     let output = run_command_for_context_streaming_structured(context, &program, &args, on_line)?;
     let coverage = build_coverage_row(
         context,
@@ -187,6 +188,7 @@ fn coverage_command(
     ];
     if include_test_reporter {
         tool_args.push(String::from("--reporter=json"));
+        tool_args.push(super::test::report_argument(context));
     }
     enforce_managed_coverage_report_destination(
         &mut tool_args,
@@ -218,6 +220,7 @@ fn coverage_override_command(
         ];
         if include_test_reporter {
             args.push(String::from("--reporter=json"));
+            args.push(super::test::report_argument(context));
         }
         args
     } else {

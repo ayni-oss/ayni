@@ -85,7 +85,15 @@ Enabled checks come from `[checks]`. Configure roots in `[node].roots`
 `command` and may set `args`. With both signals enabled,
 `[node.tooling].coverage_satisfies_test = true` opts repository `check` into one
 coverage-backed execution that must emit both a Vitest JSON test report and a
-new coverage summary. Ayni appends an absolute
+new coverage summary.
+
+Test evidence may come from stdout/stderr or Vitest 5's default
+`.vitest/json/output.json` file in the target workdir. Ayni removes the prior
+file before normal, focused, and coverage-backed test runs; missing or invalid
+new evidence fails closed. Default Vitest commands explicitly set the absolute
+report path so package selection and Vitest root configuration cannot redirect it.
+
+Ayni appends an absolute
 `--coverage.reportsDirectory=<target>/coverage` option to coverage commands so
 repository Vitest root configuration cannot redirect the managed summary path. Missing either evidence type fails both rows closed. Node
 mutation is unavailable, including through

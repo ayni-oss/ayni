@@ -11,7 +11,50 @@ use std::path::{Path, PathBuf};
 pub(crate) const INPUT_ROOT: &str = "/tmp/ayni/repository";
 pub(crate) const SEED_ROOT: &str = "/opt/ayni/dependencies";
 pub(crate) const CACHE_SEED_ROOT: &str = "/opt/ayni/cache-seed";
-const PREPARATION_IMPLEMENTATION_VERSION: &str = "10";
+const PREPARATION_IMPLEMENTATION_VERSION: &str = "11";
+
+// Package-manager caches can contain absolute links into their build-time home.
+// Keep internal links relocatable when the seed is copied into a disposable cache.
+const CACHE_LINK_SCRIPT: &str = r#"
+source=$1
+seed=$2
+shift 2
+for link do
+    target=$(/usr/bin/readlink -- "$link")
+    case "$target" in
+        /*)
+            target=$(/usr/bin/realpath -ms -- "$target")
+            case "$target" in
+                "$source"|"$source"/*)
+                    target="$seed${target#"$source"}"
+                    relative=$(/usr/bin/realpath -ms --relative-to="${link%/*}" -- "$target")
+                    /bin/ln -snf -- "$relative" "$link"
+                    ;;
+            esac
+            ;;
+    esac
+done
+"#;
+
+fn cache_link_command<'a>(source: &'a str, seed: &'a str) -> Vec<&'a str> {
+    vec![
+        "/usr/bin/find",
+        seed,
+        "-type",
+        "l",
+        "-exec",
+        "/bin/sh",
+        "-eu",
+        "-c",
+        CACHE_LINK_SCRIPT,
+        "ayni-cache-links",
+        source,
+        seed,
+        "{}",
+        "+",
+    ]
+}
+
 fn prepared_cache_copy(stage: &str) -> String {
     format!("COPY --from={stage} --chown=10001:10001 /home/ayni/.cache {CACHE_SEED_ROOT}\n")
 }
@@ -60,6 +103,9 @@ pub(crate) fn dockerfile_fragment(
             }
         }
     }
+    let relocate = serde_json::to_string(&cache_link_command("/home/ayni/.cache", CACHE_SEED_ROOT))
+        .expect("static cache relocation command");
+    output.push_str(&format!("RUN {relocate}\n"));
     Ok(output)
 }
 
@@ -403,6 +449,51 @@ mod tests {
         assert!(!fragment.contains("--chmod"));
         assert!(!fragment.contains("RUN chmod"));
         assert!(!fragment.contains("USER root"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cache_links_survive_relocation_without_rewriting_external_targets() {
+        use std::os::unix::fs::symlink;
+        let temporary = tempfile::tempdir().unwrap();
+        let seed = temporary.path().join("seed with spaces");
+        let wheels = seed.join("wheels/package");
+        fs::create_dir_all(&wheels).unwrap();
+        fs::create_dir_all(seed.join("archive/wheel")).unwrap();
+        fs::write(seed.join("archive/wheel/data"), "cached wheel").unwrap();
+        symlink("/home/ayni/.cache/archive/wheel", wheels.join("absolute")).unwrap();
+        symlink("../../archive/wheel", wheels.join("relative")).unwrap();
+        symlink("/home/ayni/.cache-other/wheel", wheels.join("external")).unwrap();
+
+        let command = cache_link_command("/home/ayni/.cache", seed.to_str().unwrap());
+        assert!(
+            std::process::Command::new(command[0])
+                .args(&command[1..])
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert_eq!(
+            fs::read_link(wheels.join("absolute")).unwrap(),
+            Path::new("../../archive/wheel")
+        );
+        assert_eq!(
+            fs::read_link(wheels.join("relative")).unwrap(),
+            Path::new("../../archive/wheel")
+        );
+        assert_eq!(
+            fs::read_link(wheels.join("external")).unwrap(),
+            Path::new("/home/ayni/.cache-other/wheel")
+        );
+        let relocated = temporary.path().join("runtime cache");
+        fs::rename(seed, &relocated).unwrap();
+        for link in ["absolute", "relative"] {
+            assert_eq!(
+                fs::read_to_string(relocated.join("wheels/package").join(link).join("data"))
+                    .unwrap(),
+                "cached wheel"
+            );
+        }
     }
 
     #[test]
