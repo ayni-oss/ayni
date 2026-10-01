@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.13.0...ayni-v0.14.0) (2026-10-01)
+
+
+### Features
+
+* **env:** certify assembled environment images ([#44](https://github.com/ayni-oss/ayni/issues/44)) ([9450bba](https://github.com/ayni-oss/ayni/commit/9450bbaefa3db8335db40b61bc48d2cac6506842))
+* **env:** define portable environment certificates ([#38](https://github.com/ayni-oss/ayni/issues/38)) ([5a7093c](https://github.com/ayni-oss/ayni/commit/5a7093c6040d037f888f6bb5072eaa362ff9f071))
+* **env:** discover prebuilt runtime environments ([#42](https://github.com/ayni-oss/ayni/issues/42)) ([31a3e54](https://github.com/ayni-oss/ayni/commit/31a3e546cfc06af7c83862ddee9849781618f8bd))
+
 ## [0.13.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.12.0...ayni-v0.13.0) (2026-09-23)
 
 
