@@ -369,7 +369,14 @@ fn certified_environment_accepts_valid_runtime_and_rejects_every_identity_mismat
         (vec!["--network", "bridge"], "requires disabled networking"),
         (vec!["--read-only=false"], "must be read-only"),
     ] {
-        assert_rejected(&run_quality(&image, &source, &["check"], &flags), message);
+        // Different users must not inherit another invocation's output permissions.
+        // Exercise launch validation with an empty output mount on native Linux too.
+        let rejected_consumer = TempDir::new().expect("rejected launch consumer");
+        copy_tree(&source, rejected_consumer.path());
+        assert_rejected(
+            &run_quality(&image, rejected_consumer.path(), &["check"], &flags),
+            message,
+        );
     }
 
     let mut invalid_signature = original.clone();
