@@ -148,6 +148,9 @@ Compare two already-produced complete current-schema artifacts explicitly:
 ayni results compare --baseline before.json --candidate after.json
 ```
 
+Built images also support `check`, `verify`, and `impact run` when launched
+externally with the [portable certified execution contract](docs/product/environments.md#portable-certified-execution), without an OCI engine inside the container.
+
 For command details, advanced `env shell`/`env run` access, output behavior, and
 result comparison semantics, see the [CLI reference](docs/cli.md),
 [configuration reference](docs/product/config.md), and

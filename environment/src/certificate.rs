@@ -15,6 +15,33 @@ pub(crate) const CERTIFICATE_SCHEMA_LABEL: &str = "dev.ayni.environment.certific
 pub(crate) const CERTIFICATE_KEY_ID_LABEL: &str = "dev.ayni.environment.certificate-key-id";
 pub(crate) const PROTECTED_CONTENT_ROOT_LABEL: &str = "dev.ayni.environment.protected-content-root";
 pub(crate) const MANIFEST_SCHEMA_VERSION: &str = "1";
+pub const MAX_CERTIFICATE_BYTES: u64 = 64 * 1024;
+pub const MAX_CERTIFICATE_KEY_ID_BYTES: usize = 128;
+pub const MAX_PROTECTED_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
+pub const MAX_PROTECTED_MANIFEST_ENTRIES: usize = 1_000_000;
+pub const PROTECTED_FILE_ROOTS: &[&str] = &[
+    "/etc/ayni/mise.toml",
+    "/usr/local/bin/ayni",
+    "/usr/local/bin/mise",
+];
+pub const PROTECTED_TREE_ROOTS: &[&str] = &[
+    "/opt/ayni",
+    "/home/ayni/.rustup",
+    "/home/ayni/.cache/cargo/bin",
+];
+pub const PROTECTED_ANCESTOR_DIRS: &[&str] = &[
+    "/",
+    "/etc",
+    "/etc/ayni",
+    "/usr",
+    "/usr/local",
+    "/usr/local/bin",
+    "/opt",
+    "/home",
+    "/home/ayni",
+    "/home/ayni/.cache",
+    "/home/ayni/.cache/cargo",
+];
 const SIGNING_KEY_ENV: &str = "AYNI_ENV_CERTIFICATE_SIGNING_KEY";
 const KEY_ID_ENV: &str = "AYNI_ENV_CERTIFICATE_KEY_ID";
 pub(crate) const SIGNING_ENVIRONMENT: &[&str] = &[SIGNING_KEY_ENV, KEY_ID_ENV];
@@ -36,6 +63,22 @@ impl SigningMaterial {
             key: signing_key(seed)?,
         })
     }
+}
+
+/// Reject a signer that cannot be accepted by a configured portable trust policy.
+/// An empty policy retains local-only managed builds without portable admission.
+pub fn validate_signing_trust(
+    trust: &ayni_core::EnvironmentCertificateTrustPolicy,
+) -> Result<(), BackendError> {
+    let signing = SigningMaterial::from_env()?;
+    if !trust.is_empty()
+        && !trust.trusts_key(&signing.key_id, &signing.key.verifying_key().to_bytes())
+    {
+        return Err(BackendError::environment(
+            "environment signing key is not trusted by the repository; configure the matching public key before locking and building",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +144,11 @@ pub(crate) fn create(
         BackendError::execution(format!("cannot serialize environment certificate: {error}"))
     })?;
     certificate.push('\n');
+    if certificate.len() as u64 > MAX_CERTIFICATE_BYTES {
+        return Err(BackendError::environment(
+            "environment certificate exceeds the supported size limit",
+        ));
+    }
     let identity = CertificateIdentity {
         schema_version: ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION.into(),
         key_id: signing.key_id.clone(),
@@ -156,13 +204,13 @@ pub(crate) fn validate_installed(
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
-enum ManifestEntry {
+pub enum ProtectedManifestEntry {
     File { path: String, sha256: String },
     Symlink { path: String, target: String },
 }
 
-impl ManifestEntry {
-    fn path(&self) -> &str {
+impl ProtectedManifestEntry {
+    pub fn path(&self) -> &str {
         match self {
             Self::File { path, .. } | Self::Symlink { path, .. } => path,
         }
@@ -189,7 +237,7 @@ pub(crate) fn manifest_from_inventory(
     Ok(render_manifest(&entries))
 }
 
-fn render_manifest(entries: &[ManifestEntry]) -> String {
+fn render_manifest(entries: &[ProtectedManifestEntry]) -> String {
     let mut manifest = serde_json::to_string(&ManifestHeader {
         schema_version: MANIFEST_SCHEMA_VERSION,
     })
@@ -202,11 +250,14 @@ fn render_manifest(entries: &[ManifestEntry]) -> String {
     manifest
 }
 
-fn compare_manifest_entries(left: &ManifestEntry, right: &ManifestEntry) -> std::cmp::Ordering {
+fn compare_manifest_entries(
+    left: &ProtectedManifestEntry,
+    right: &ProtectedManifestEntry,
+) -> std::cmp::Ordering {
     left.path().cmp(right.path()).then(left.cmp(right))
 }
 
-fn validate_manifest_entries(entries: &[ManifestEntry]) -> Result<(), BackendError> {
+fn validate_manifest_entries(entries: &[ProtectedManifestEntry]) -> Result<(), BackendError> {
     if entries.windows(2).any(|pair| {
         compare_manifest_entries(&pair[0], &pair[1]) != std::cmp::Ordering::Less
             || pair[0].path() == pair[1].path()
@@ -218,28 +269,21 @@ fn validate_manifest_entries(entries: &[ManifestEntry]) -> Result<(), BackendErr
     for entry in entries {
         validate_absolute_path(entry.path())?;
         match entry {
-            ManifestEntry::File { sha256, .. } if !valid_digest(sha256) => {
+            ProtectedManifestEntry::File { sha256, .. } if !valid_digest(sha256) => {
                 return Err(BackendError::environment(
                     "protected-content manifest contains an invalid file digest",
                 ));
             }
-            ManifestEntry::Symlink { target, .. } if target.is_empty() => {
-                return Err(BackendError::environment(
-                    "protected-content manifest contains an empty symlink target",
-                ));
+            ProtectedManifestEntry::Symlink { path, target } => {
+                validate_symlink_target(path, target)?;
             }
             _ => {}
         }
     }
-    for required in [
-        "/etc/ayni/mise.toml",
-        "/usr/local/bin/ayni",
-        "/usr/local/bin/mise",
-    ] {
-        if !entries
-            .iter()
-            .any(|entry| matches!(entry, ManifestEntry::File { path, .. } if path == required))
-        {
+    for &required in PROTECTED_FILE_ROOTS {
+        if !entries.iter().any(
+            |entry| matches!(entry, ProtectedManifestEntry::File { path, .. } if path == required),
+        ) {
             return Err(BackendError::environment(format!(
                 "protected-content manifest is missing {required}"
             )));
@@ -256,7 +300,7 @@ fn validate_manifest_entries(entries: &[ManifestEntry]) -> Result<(), BackendErr
     Ok(())
 }
 
-fn parse_file_records(bytes: &[u8]) -> Result<Vec<ManifestEntry>, BackendError> {
+fn parse_file_records(bytes: &[u8]) -> Result<Vec<ProtectedManifestEntry>, BackendError> {
     let mut entries = Vec::new();
     for record in nul_records(bytes, "file hash")? {
         if record.len() < 67
@@ -272,7 +316,7 @@ fn parse_file_records(bytes: &[u8]) -> Result<Vec<ManifestEntry>, BackendError> 
         let path = std::str::from_utf8(&record[66..])
             .map_err(|_| BackendError::environment("protected-content path is not valid UTF-8"))?;
         validate_absolute_path(path)?;
-        entries.push(ManifestEntry::File {
+        entries.push(ProtectedManifestEntry::File {
             path: path.into(),
             sha256: format!("sha256:{}", String::from_utf8_lossy(&record[..64])),
         });
@@ -280,7 +324,7 @@ fn parse_file_records(bytes: &[u8]) -> Result<Vec<ManifestEntry>, BackendError> 
     Ok(entries)
 }
 
-fn parse_symlink_records(bytes: &[u8]) -> Result<Vec<ManifestEntry>, BackendError> {
+fn parse_symlink_records(bytes: &[u8]) -> Result<Vec<ProtectedManifestEntry>, BackendError> {
     let records = nul_records(bytes, "symlink")?;
     if records.len() % 2 != 0 {
         return Err(BackendError::environment(
@@ -301,7 +345,7 @@ fn parse_symlink_records(bytes: &[u8]) -> Result<Vec<ManifestEntry>, BackendErro
                 "protected-content symlink target is empty",
             ));
         }
-        entries.push(ManifestEntry::Symlink {
+        entries.push(ProtectedManifestEntry::Symlink {
             path: path.into(),
             target: target.into(),
         });
@@ -322,15 +366,71 @@ fn nul_records<'a>(bytes: &'a [u8], description: &str) -> Result<Vec<&'a [u8]>, 
 }
 
 fn validate_absolute_path(path: &str) -> Result<(), BackendError> {
-    if !path.starts_with('/') || path.contains('\0') {
+    let normalized = path.strip_prefix('/').is_some_and(|relative| {
+        !relative.is_empty()
+            && !path.contains('\0')
+            && relative
+                .split('/')
+                .all(|component| !component.is_empty() && component != "." && component != "..")
+    });
+    if !normalized || !protected_path(path, false) {
         return Err(BackendError::environment(format!(
-            "protected-content inventory path is invalid: {path:?}"
+            "protected-content inventory path is invalid or outside protected roots: {path:?}"
         )));
     }
     Ok(())
 }
 
-fn validate_manifest(manifest: &str) -> Result<(), BackendError> {
+fn protected_path(path: &str, allow_tree_root: bool) -> bool {
+    PROTECTED_FILE_ROOTS.contains(&path)
+        || PROTECTED_TREE_ROOTS
+            .iter()
+            .any(|root| (allow_tree_root && path == *root) || path.starts_with(&format!("{root}/")))
+}
+
+fn validate_symlink_target(path: &str, target: &str) -> Result<(), BackendError> {
+    if target.is_empty() || target.contains('\0') {
+        return Err(BackendError::environment(
+            "protected-content manifest contains an empty or invalid symlink target",
+        ));
+    }
+    let unresolved = if target.starts_with('/') {
+        target.to_owned()
+    } else {
+        let parent = path.rsplit_once('/').map_or("/", |(parent, _)| parent);
+        format!("{parent}/{target}")
+    };
+    let mut components = Vec::new();
+    for component in unresolved.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                if components.pop().is_none() {
+                    return Err(BackendError::environment(
+                        "protected-content symlink target escapes the filesystem root",
+                    ));
+                }
+            }
+            component => components.push(component),
+        }
+    }
+    let resolved = format!("/{}", components.join("/"));
+    if !protected_path(&resolved, true) {
+        return Err(BackendError::environment(format!(
+            "protected-content symlink {path} resolves outside protected roots"
+        )));
+    }
+    Ok(())
+}
+
+pub fn parse_protected_manifest(
+    manifest: &str,
+) -> Result<Vec<ProtectedManifestEntry>, BackendError> {
+    if manifest.len() as u64 > MAX_PROTECTED_MANIFEST_BYTES {
+        return Err(BackendError::environment(
+            "protected-content manifest exceeds the supported size limit",
+        ));
+    }
     let header = format!("{{\"schema_version\":\"{MANIFEST_SCHEMA_VERSION}\"}}");
     if !manifest.ends_with('\n') {
         return Err(BackendError::environment(
@@ -345,20 +445,29 @@ fn validate_manifest(manifest: &str) -> Result<(), BackendError> {
     }
     let entries = lines
         .map(|line| {
-            serde_json::from_str::<ManifestEntry>(line).map_err(|error| {
+            serde_json::from_str::<ProtectedManifestEntry>(line).map_err(|error| {
                 BackendError::environment(format!(
                     "protected-content manifest contains a malformed entry: {error}"
                 ))
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
+    if entries.len() > MAX_PROTECTED_MANIFEST_ENTRIES {
+        return Err(BackendError::environment(
+            "protected-content manifest exceeds the supported entry limit",
+        ));
+    }
     validate_manifest_entries(&entries)?;
     if render_manifest(&entries) != manifest {
         return Err(BackendError::environment(
             "protected-content manifest is not canonically encoded",
         ));
     }
-    Ok(())
+    Ok(entries)
+}
+
+fn validate_manifest(manifest: &str) -> Result<(), BackendError> {
+    parse_protected_manifest(manifest).map(|_| ())
 }
 
 fn required(name: &str) -> Result<String, BackendError> {
@@ -374,12 +483,13 @@ fn required(name: &str) -> Result<String, BackendError> {
 
 fn validate_key_id(value: &str) -> Result<(), BackendError> {
     if value.is_empty()
+        || value.len() > MAX_CERTIFICATE_KEY_ID_BYTES
         || !value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
     {
         return Err(BackendError::environment(format!(
-            "{KEY_ID_ENV} must contain only ASCII letters, digits, '.', '-', or '_'"
+            "{KEY_ID_ENV} must contain only ASCII letters, digits, '.', '-', or '_' and be at most {MAX_CERTIFICATE_KEY_ID_BYTES} bytes"
         )));
     }
     Ok(())
@@ -477,6 +587,15 @@ mod tests {
         assert!(validate_manifest(&duplicate).is_err());
         let noncanonical = manifest.replacen("{\"type\":\"file\",\"path\"", "{\"path\"", 1);
         assert!(validate_manifest(&noncanonical).is_err());
+        let outside = manifest.replace("/opt/ayni/mise/installs/rust/bin/rustc", "/usr/bin/rustc");
+        assert!(validate_manifest(&outside).is_err());
+        let unsafe_symlink = manifest.replace("../bin/mise", "/tmp/mise");
+        assert!(validate_manifest(&unsafe_symlink).is_err());
+        let required_symlink = manifest.replace(
+            "{\"type\":\"file\",\"path\":\"/usr/local/bin/ayni\",\"sha256\":\"sha256:0202020202020202020202020202020202020202020202020202020202020202\"}",
+            "{\"type\":\"symlink\",\"path\":\"/usr/local/bin/ayni\",\"target\":\"/tmp/ayni\"}",
+        );
+        assert!(validate_manifest(&required_symlink).is_err());
     }
 
     #[test]
@@ -487,5 +606,12 @@ mod tests {
         assert!(SigningMaterial::from_values(&"AA".repeat(32), "release-2026").is_err());
         assert!(SigningMaterial::from_values(&"07".repeat(31), "release-2026").is_err());
         assert!(SigningMaterial::from_values(&"07".repeat(32), "bad key").is_err());
+        assert!(
+            SigningMaterial::from_values(
+                &"07".repeat(32),
+                &"a".repeat(MAX_CERTIFICATE_KEY_ID_BYTES + 1),
+            )
+            .is_err()
+        );
     }
 }

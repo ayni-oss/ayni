@@ -101,8 +101,8 @@ Portable environment certificates use Ed25519 keys pinned under
 records its SHA-256 fingerprint in `.ayni.lock`; changing a trusted key requires
 an explicit `ayni env lock` refresh. These values are public verification keys,
 not the private `AYNI_ENV_CERTIFICATE_SIGNING_KEY` seed used by `env build`.
-For an image intended for admission, `AYNI_ENV_CERTIFICATE_KEY_ID` must identify
-the corresponding map entry and should change when the key pair rotates. The certificate deliberately does not
+For a portable certified image, `AYNI_ENV_CERTIFICATE_KEY_ID` must identify
+the matching public-key map entry (checked before building) and should change when the key pair rotates. The certificate deliberately does not
 contain its final OCI image digest, because embedding that digest would change
 the image itself. A launcher may bind an independently observed immutable OCI
 digest to execution evidence.

@@ -198,6 +198,7 @@ dependencies = [
  "clap",
  "clap-markdown",
  "crossterm",
+ "ed25519-dalek",
  "owo-colors",
  "ratatui",
  "serde",
@@ -231,6 +232,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tar",
  "tempfile",
 ]

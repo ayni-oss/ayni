@@ -483,7 +483,13 @@ fn validate_managed_handoff_invocation(operation: &ImpactOperation) -> Result<()
         .managed_handoff
         .as_ref()
         .expect("managed handoff selected");
-    if path != Path::new("/opt/ayni/inputs/impact-plan.json") {
+    let portable_path = std::env::var_os("AYNI_MANAGED_PREBUILT_RUNTIME")
+        .and_then(|_| std::env::var_os("AYNI_MANAGED_IMPACT_HANDOFF"));
+    let expected = portable_path
+        .as_deref()
+        .map(Path::new)
+        .unwrap_or_else(|| Path::new("/opt/ayni/inputs/impact-plan.json"));
+    if path != expected {
         return Err(Error::input(
             "managed impact handoff must use the reserved read-only input path",
         ));

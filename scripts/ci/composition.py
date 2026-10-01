@@ -85,6 +85,7 @@ func main() {
 }
 ''')
         test = destination / "kotlin/libs/greeting/src/test/kotlin/ayni/greeting/CompositionTest.kt"
+        test.parent.mkdir(parents=True, exist_ok=True)
         test.write_text('''package ayni.greeting
 import kotlin.test.Test
 import kotlin.test.assertEquals

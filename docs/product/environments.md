@@ -165,6 +165,21 @@ checkout; push it to a job-local registry to obtain the pullable reference.
 A source commit identifies its checkout baseline, while the executable and OCI
 digests capture the actual bytes, including uncommitted changes.
 
+Contributors can exercise the complete portable-runtime path on Linux or macOS
+with Docker:
+
+```sh
+scripts/test-prebuilt-runtime.sh
+```
+
+The harness builds matching host and Linux checkout binaries, uses an ephemeral
+local registry, locks a minimal fixture with a test-only certificate key, runs
+`env build`, and then invokes `ayni check` directly in the certified image with
+a read-only source mount and disabled network. It also checks certificate,
+lock, manifest, protected-file, permission, and symlink rejection boundaries.
+Test signing material and images are local to the harness and are not release
+inputs.
+
 For installed releases, the first build resolves the matching published executor
 and records its immutable identity. Later builds reuse it without resolving the
 mutable release tag again. A version/platform-incompatible or invalid record
@@ -456,28 +471,128 @@ For command flags, see the [CLI reference](/cli). For runner resolution,
 timeouts, diagnostics, and failure categories, see [Runtime and setup
 rules](/product/runtime).
 
-## Prebuilt runtime discovery
+## Portable certified execution
 
-A published Ayni environment can run `ayni check` without a local container
-engine. Ayni recognizes this mode only when `/etc/ayni/runtime.json` is a
-root-owned regular file containing the portable environment-certificate
-envelope. Ayni-built images also retain the signed inventory at
-`/etc/ayni/protected-content.manifest`. The marker is runtime provenance, not
-external-image admission: this release does not yet admit an independently
-supplied image by verifying its signature and protected filesystem contents.
+Build once for a supported Linux platform and distribute the resulting image
+through any OCI registry. Docker, Podman, or Kubernetes selects, pulls, and
+launches the image. Ayni has no image import command and does not need a
+container engine inside the prebuilt runtime.
 
-In that mode, Ayni uses `AYNI_SOURCE_ROOT` when set, otherwise its current
-working directory. The selected source must provide regular `.ayni.toml` and
-`.ayni.lock` files, and the lock must still describe the mounted source. Its
-fingerprint must match the runtime marker. Check evidence includes the marker
-digest and certificate claims, while source files remain untouched so a
-read-only mount is supported:
+The builder needs a private Ed25519 signing seed. Consumers need only the
+image, the source checkout with its committed `.ayni.lock`, and the corresponding
+public key pinned in `.ayni.toml`:
 
-```sh
-docker run -v "$PWD:/workspace:ro" -w /workspace \
-  registry/project-env@sha256:... ayni check
+```toml
+[environment.certificate.trusted_keys]
+team-build = "<64 lowercase hexadecimal characters for the public key>"
 ```
 
-When the marker is absent, `ayni check` retains the ordinary local managed
-execution behavior. Image pull, publication, lifecycle, and certificate
-verification remain external-runner responsibilities.
+Configure trust before running `ayni env lock`. Set
+`AYNI_ENV_CERTIFICATE_KEY_ID=team-build` and supply
+`AYNI_ENV_CERTIFICATE_SIGNING_KEY` through the builder's secret mechanism, then
+run `ayni env build`. A configured trust policy rejects a mismatched signing key
+before the image build. An empty trust policy permits local managed builds, but
+cannot admit an externally launched certified runtime. Never put private signing
+material in the repository, Dockerfile, image, or consumer environment.
+
+Ayni uses the protected `/usr/local/bin/ayni` runner and verifies the canonical,
+root-owned `/etc/ayni/runtime.json` and
+`/etc/ayni/protected-content.manifest`. Verification binds the Ed25519 signature,
+trusted public key, current source lock, platform, runner version, tool inventory,
+and every protected file and symlink. The worker revalidates the lock and runtime
+before executing quality work. A present invalid certificate fails closed;
+absence retains the ordinary locally managed execution path.
+
+### Launch contract
+
+Use a fresh container for each quality invocation. Supply:
+
+- The `ayni` user, UID/GID `10001:10001`, a read-only root filesystem, all
+  capabilities dropped, and `no-new-privileges`.
+- A readable source checkout mounted read-only, with a separate writable `.ayni`
+  directory for artifacts. Provision that output directory's ownership or ACLs
+  for UID 10001 before launching; do not make the source writable to solve an
+  output-permission error.
+- An empty writable `/workspace` tmpfs and writable `/tmp` scratch space sized
+  for the repository and prepared dependencies.
+- Networking disabled by default. Bridge networking or a Docker socket requires
+  both the locked capability and the corresponding per-invocation authorization.
+- The locked resource ceilings, enforced by the external launcher. Ayni checks
+  observable process, filesystem, and network posture; it does not configure an
+  external container's cgroups or independently attest its launcher.
+
+For example, after publishing an image and preparing the writable output directory:
+
+```sh
+docker run --rm --read-only --network none \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --user 10001:10001 \
+  --cpus 4 --memory 8g --memory-swap 8g --pids-limit 2048 \
+  --ulimit nofile=8192:8192 \
+  --mount "type=bind,source=$PWD,target=/source,readonly" \
+  --mount "type=bind,source=$PWD/.ayni,target=/source/.ayni" \
+  --tmpfs /workspace:rw,exec,nosuid,size=4g,mode=1777 \
+  --tmpfs /tmp:rw,exec,nosuid,size=8g,mode=1777 \
+  --workdir /source --entrypoint /usr/local/bin/ayni \
+  registry.example/team/project-env@sha256:<manifest-digest> check
+```
+
+Replace `check` with `verify test` or `impact run --base <local-revision>`.
+Impact requires readable local Git history containing the explicit base. If
+checkout ownership differs from UID 10001, configure Git's `safe.directory` for
+that exact source path in the trusted launcher; do not trust every directory.
+Use `--config` to select the lock-bound contract when the working directory is
+elsewhere. `AYNI_SOURCE_ROOT` can instead supply the base directory for relative
+configuration paths inside a prebuilt runtime.
+
+Ayni creates a bounded snapshot using the same source enumeration as ordinary
+managed checks, copies it into the disposable workspace, activates locked target
+environments, and copies prepared dependencies and caches from the image. Native
+materialization commands run offline in the disposable workspace. Source-only
+edits reuse the image. No builder-side `.ayni/environment/build.json`, private
+key, registry credentials, or nested Docker socket is required.
+
+Checks and focused verification persist their normal `signals.json` files.
+Impact persists `impact.json`. Each command also writes `execution.json` binding
+the result digest, source identity, verified certificate, and protected-content
+root. Failed setup invalidates prior evidence for that command. Runtime identity
+is not accepted from a user-supplied image-name or digest environment variable.
+The standalone path omits the OCI digest: only a trusted external launcher can
+independently attach an observed manifest digest to its own execution evidence.
+
+The in-image certificate identifies the protected content and its lock; it does
+not include the final OCI digest, which would be self-referential. Image IDs,
+registry manifest digests, and protected-content roots are distinct identities.
+A valid copy of an image is expected to verify. Copying a certificate beside
+mismatched protected content does not verify. Image configuration, system files
+outside the protected roots, the container host, and the launcher remain trusted
+inputs; see [security](security.md#portable-certified-runtimes).
+
+### Development and recovery
+
+The same image can be launched for coding with a writable checkout and a shell.
+That development launch does not satisfy the certified quality launch contract.
+Use `--host` for direct checks in that development session, or launch a fresh
+certified quality container against the edited source using the recipe above.
+This preserves disposable quality workspaces without introducing nested Docker
+or privileged mount management.
+
+| Failure | Recovery |
+| --- | --- |
+| Source-only edit | Rerun the quality command with the same image |
+| Changed policy, trusted keys, native manifests, or dependency locks | Run `env lock`, then build and distribute a new certified image |
+| Untrusted signer | Review and pin the expected public key, refresh the lock, and rebuild |
+| Corrupt certificate, manifest, or protected file | Pull the expected immutable image again; rebuild and sign if the source image is wrong |
+| Wrong platform or incompatible runner | Build/use the matching platform and runner image |
+| Writable runtime/source, root user, extra capabilities, or active network | Correct the external launch settings; do not bypass verification |
+| Missing output permissions or scratch capacity | Fix output ownership/ACLs or scratch limits and use a fresh container |
+| Missing impact base | Supply the required local Git history; Ayni does not fetch it |
+
+Contributor acceptance coverage includes a clean consumer, all three commands,
+source-only reuse, evidence persistence, tampering rejection, launch-posture
+rejection, and attempts to modify protected certificate/source paths. Add the
+existing five-language examples to exercise prepared dependencies:
+
+```sh
+scripts/test-prebuilt-runtime.sh --examples
+```

@@ -19,7 +19,7 @@ const WORKSPACE_MANIFEST: &str = "/opt/ayni/inputs/workspace-files";
 
 /// Operator-owned authorization for repository-requested runtime capabilities.
 /// This value is intentionally not stored in the repository lock.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LaunchAuthorization {
     pub allow_network: bool,
     pub allow_docker_socket: bool,
@@ -134,7 +134,9 @@ pub struct ReadOnlyInput {
     pub destination: String,
 }
 
+mod portable;
 mod snapshot;
+pub use portable::{launch as launch_prebuilt, validate_posture as validate_prebuilt_posture};
 
 fn managed_workspace_snapshot(
     root: &Path,
@@ -434,7 +436,7 @@ fn repository_launch_args(request: RepositoryLaunch<'_>) -> Result<Vec<String>, 
     Ok(args)
 }
 
-fn managed_tool_versions(lock: &EnvironmentLock) -> Result<String, BackendError> {
+pub fn locked_tool_versions(lock: &EnvironmentLock) -> Vec<ArtifactToolVersion> {
     let mut versions = vec![ArtifactToolVersion {
         tool: String::from("mise"),
         version: lock.mise_version().to_owned(),
@@ -462,7 +464,11 @@ fn managed_tool_versions(lock: &EnvironmentLock) -> Result<String, BackendError>
     }));
     versions.sort();
     versions.dedup();
-    serde_json::to_string(&versions).map_err(|error| {
+    versions
+}
+
+fn managed_tool_versions(lock: &EnvironmentLock) -> Result<String, BackendError> {
+    serde_json::to_string(&locked_tool_versions(lock)).map_err(|error| {
         BackendError::environment(format!(
             "failed to serialize managed tool provenance: {error}"
         ))

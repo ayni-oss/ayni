@@ -111,7 +111,7 @@ jobs:
   ayni:
     name: Ayni
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -143,6 +143,12 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null
           python3 scripts/ci/candidate.py import --directory .ayni/ci-candidate --source "$SOURCE" --platform "$PLATFORM" --run-id "$GITHUB_RUN_ID"
+
+      - name: Verify certified prebuilt runtime
+        run: |
+          scripts/test-prebuilt-runtime.sh --examples \
+            --cli "${{ steps.candidate.outputs.cli }}" \
+            --executor "${{ steps.candidate.outputs.executor }}"
 
       - name: Generate ephemeral environment signing material
         run: |

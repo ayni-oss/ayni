@@ -150,9 +150,7 @@ fn fake_mise(root: &TempDir, body: &str) -> std::path::PathBuf {
     let executable = bin.join("mise");
     fs::write(
         &executable,
-        format!(
-            "#!/bin/sh\nwhile [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n{body}\n"
-        ),
+        format!("#!/bin/sh\n[ \"$1\" = \"--no-config\" ] || exit 2; shift\n{body}\n"),
     )
     .unwrap();
     let mut permissions = fs::metadata(&executable).unwrap().permissions();

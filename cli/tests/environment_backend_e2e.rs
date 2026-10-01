@@ -81,7 +81,7 @@ fn fixture() -> TempDir {
     }
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     write_executable(
         &bin.join("docker"),
@@ -201,7 +201,13 @@ fn build_and_run_use_a_fake_docker_without_baking_the_checkout() {
     assert!(!dockerfile.contains("dev.ayni.environment.owner=\"ayni\""));
     let certified_dockerfile =
         fs::read_to_string(root.path().join("bin/executor-certified.Dockerfile")).unwrap();
-    assert!(certified_dockerfile.starts_with("FROM ayni-env-stage:"));
+    let certified_base = certified_dockerfile
+        .lines()
+        .next()
+        .and_then(|line| line.strip_prefix("FROM ayni-env-stage:"))
+        .expect("certification uses the private local assembled tag");
+    assert_eq!(certified_base.len(), 32);
+    assert!(certified_base.bytes().all(|byte| byte.is_ascii_hexdigit()));
     assert!(
         certified_dockerfile.contains("COPY --chown=0:0 certificate.json /etc/ayni/runtime.json")
     );
@@ -502,7 +508,7 @@ fn npm_dependencies_are_staged_materialized_offline_and_mounted_for_managed_qual
     .unwrap();
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     write_executable(
         &bin.join("docker"),
@@ -635,7 +641,7 @@ fn pnpm_workspace_materializes_all_node_modules_trees_in_one_offline_run() {
     .unwrap();
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     write_executable(
         &bin.join("docker"),
@@ -813,7 +819,7 @@ fn five_language_build_composes_preparation_without_staging_source() {
 
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     let record = root.path().join("polyglot");
     write_executable(

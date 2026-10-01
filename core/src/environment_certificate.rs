@@ -135,6 +135,14 @@ impl EnvironmentCertificateTrustPolicy {
         )
     }
 
+    /// Whether this exact public key is pinned under the supplied key identifier.
+    #[must_use]
+    pub fn trusts_key(&self, key_id: &str, public_key: &[u8; 32]) -> bool {
+        self.trusted_keys
+            .get(key_id)
+            .is_some_and(|value| value == &crate::lower_hex(public_key))
+    }
+
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.trusted_keys.is_empty()
@@ -273,9 +281,14 @@ mod tests {
         let envelope =
             EnvironmentCertificateEnvelope::sign(certificate(), "release-2026", &signing_key)
                 .unwrap();
-        envelope
-            .verify(&EnvironmentCertificateTrustPolicy::new(keys).unwrap())
-            .unwrap();
+        let trust = EnvironmentCertificateTrustPolicy::new(keys).unwrap();
+        assert!(trust.trusts_key("release-2026", &signing_key.verifying_key().to_bytes()));
+        assert!(!trust.trusts_key("other", &signing_key.verifying_key().to_bytes()));
+        assert!(!trust.trusts_key(
+            "release-2026",
+            &SigningKey::from_bytes(&[8; 32]).verifying_key().to_bytes()
+        ));
+        envelope.verify(&trust).unwrap();
     }
 
     #[test]

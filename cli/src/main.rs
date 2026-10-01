@@ -30,6 +30,9 @@ use clap::Parser;
 use registry::build_registry;
 
 fn main() -> ExitCode {
+    if let Err(error) = prebuilt_runtime::validate_worker() {
+        return crate::application_error::render_error(error);
+    }
     dispatch(args::Cli::parse().into_operation())
 }
 
@@ -71,9 +74,10 @@ fn dispatch(operation: application::Operation) -> ExitCode {
     }
 }
 
-fn dispatch_analysis(operation: application::Operation) -> ExitCode {
+fn dispatch_analysis(mut operation: application::Operation) -> ExitCode {
     use application::{ExecutionMode, Operation};
 
+    prebuilt_runtime::resolve_source_config(&mut operation);
     if host_mode_has_managed_authorization(&operation) {
         eprintln!(
             "--allow-network and --allow-docker-socket authorize managed-container capabilities; remove them when using --host"
@@ -91,27 +95,12 @@ fn dispatch_analysis(operation: application::Operation) -> ExitCode {
         Operation::ImpactRun(operation) if operation.execution_mode == ExecutionMode::Host => {
             impact::run(operation)
         }
-        Operation::Check(operation) => dispatch_check_operation(operation),
+        Operation::Check(operation) => environment_backend::check(operation, &build_registry()),
         Operation::Verify(operation) => environment_backend::verify(operation, &build_registry()),
         Operation::ImpactRun(operation) => {
             environment_backend::impact_run(operation, &build_registry())
         }
         _ => unreachable!("dispatch_analysis received a non-analysis operation"),
-    }
-}
-
-fn dispatch_check_operation(operation: application::CheckOperation) -> ExitCode {
-    match prebuilt_runtime::discover() {
-        Ok(Some(runtime)) => {
-            prebuilt_runtime::prepare_check(operation, &runtime, &build_registry())
-                .and_then(|operation| {
-                    prebuilt_runtime::activate(&runtime)?;
-                    Ok(dispatch_host_check(operation))
-                })
-                .unwrap_or_else(crate::application_error::render_error)
-        }
-        Ok(None) => environment_backend::check(operation, &build_registry()),
-        Err(error) => crate::application_error::render_error(error),
     }
 }
 

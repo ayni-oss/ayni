@@ -228,8 +228,8 @@ class CompletionTests(unittest.TestCase):
         self.assertNotIn("pull_request_target", workflow)
         self.assertNotIn("workflow_run", workflow)
         self.assertNotIn("secrets:", workflow)
-        self.assertIn("ayni env build --repo-root .", workflow)
-        self.assertIn("ayni check --config .ayni.toml --output markdown", workflow)
+        self.assertIn('"${{ steps.candidate.outputs.cli }}" env build --repo-root . --executor-image', workflow)
+        self.assertIn('"${{ steps.candidate.outputs.cli }}" check --config .ayni.toml --output markdown', workflow)
         self.assertIn("<!-- ayni-signals -->", workflow)
 
         metadata_job = workflow.split("\n  metadata:\n", 1)[1].split("\n  cncf:\n", 1)[0]
@@ -246,15 +246,6 @@ class CompletionTests(unittest.TestCase):
         self.assertNotIn("actions/checkout", report_job)
         self.assertNotIn("ayni check", report_job)
 
-        for removed_pipeline_term in (
-            "candidate-",
-            "managed-lock",
-            "use-candidate",
-            "run_fixture.py",
-            "coordinate.py",
-            "docker ",
-        ):
-            self.assertNotIn(removed_pipeline_term, workflow)
 
 
 if __name__ == "__main__":

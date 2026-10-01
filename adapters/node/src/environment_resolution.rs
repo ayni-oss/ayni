@@ -52,8 +52,6 @@ fn resolve_registry(
     })?;
     let args = vec![
         "--no-config".to_owned(),
-        "--no-env".to_owned(),
-        "--no-hooks".to_owned(),
         "ls-remote".to_owned(),
         name.to_owned(),
     ];
