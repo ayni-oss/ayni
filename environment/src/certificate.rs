@@ -65,6 +65,22 @@ impl SigningMaterial {
     }
 }
 
+/// Reject a signer that cannot be accepted by a configured portable trust policy.
+/// An empty policy retains local-only managed builds without portable admission.
+pub fn validate_signing_trust(
+    trust: &ayni_core::EnvironmentCertificateTrustPolicy,
+) -> Result<(), BackendError> {
+    let signing = SigningMaterial::from_env()?;
+    if !trust.is_empty()
+        && !trust.trusts_key(&signing.key_id, &signing.key.verifying_key().to_bytes())
+    {
+        return Err(BackendError::environment(
+            "environment signing key is not trusted by the repository; configure the matching public key before locking and building",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CertificateIdentity {
     pub(crate) schema_version: String,

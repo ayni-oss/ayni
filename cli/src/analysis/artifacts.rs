@@ -48,7 +48,7 @@ pub(crate) fn build_artifact_metadata_for_command(
         .map(|target| target.run_context.scope.clone());
     let prebuilt_runtime = prebuilt_runtime_identity()?;
     let managed = managed_execution_active() || prebuilt_runtime.is_some();
-    let mut tool_versions = managed_tool_versions(managed, prebuilt_runtime.is_some())?;
+    let mut tool_versions = managed_tool_versions(managed)?;
     tool_versions.sort();
     tool_versions.dedup();
 
@@ -79,15 +79,9 @@ pub(crate) fn build_artifact_metadata_for_command(
     })
 }
 
-fn managed_tool_versions(
-    managed: bool,
-    prebuilt: bool,
-) -> Result<Vec<ArtifactToolVersion>, String> {
+fn managed_tool_versions(managed: bool) -> Result<Vec<ArtifactToolVersion>, String> {
     if !managed {
         return Ok(Vec::new());
-    }
-    if prebuilt {
-        return Ok(crate::prebuilt_runtime::active_tool_versions());
     }
     let value = std::env::var(MANAGED_TOOL_VERSIONS)
         .map_err(|_| String::from("managed execution is missing tool-version provenance"))?;
@@ -111,11 +105,13 @@ fn runtime_lock_fingerprint(
 }
 
 fn prebuilt_runtime_identity() -> Result<Option<PrebuiltRuntimeIdentity>, String> {
-    Ok(crate::prebuilt_runtime::active_identity())
-}
-
-fn prebuilt_runtime_active() -> bool {
-    crate::prebuilt_runtime::active()
+    std::env::var("AYNI_MANAGED_PREBUILT_RUNTIME")
+        .ok()
+        .map(|value| {
+            serde_json::from_str(&value)
+                .map_err(|error| format!("invalid prebuilt runtime identity: {error}"))
+        })
+        .transpose()
 }
 
 fn file_fingerprint(path: &Path) -> Result<String, String> {
@@ -372,9 +368,6 @@ pub(crate) fn serialize_artifact(artifact: &RunArtifact) -> Result<String, Strin
 /// contract validation fails before target planning. Absence is safer than a
 /// prior successful artifact whose contract digest no longer matches.
 pub(crate) fn invalidate_artifact_at(repo_root: &Path, relative_path: &str) -> Result<(), String> {
-    if prebuilt_runtime_active() {
-        return Ok(());
-    }
     let destination = repo_root.join(relative_path);
     if matches!(
         destination.file_name().and_then(|name| name.to_str()),
@@ -405,9 +398,6 @@ pub(crate) fn persist_artifact_at(
     relative_path: &str,
     serialized: &str,
 ) -> Result<(), String> {
-    if prebuilt_runtime_active() {
-        return Ok(());
-    }
     let destination = repo_root.join(relative_path);
     let parent = destination
         .parent()

@@ -9,6 +9,7 @@ use std::process::{Command, Output};
 use std::time::Duration;
 
 mod certificate;
+pub use certificate::validate_signing_trust;
 pub use certificate::{
     MAX_CERTIFICATE_BYTES, MAX_CERTIFICATE_KEY_ID_BYTES, MAX_PROTECTED_MANIFEST_BYTES,
     MAX_PROTECTED_MANIFEST_ENTRIES, PROTECTED_ANCESTOR_DIRS, PROTECTED_FILE_ROOTS,
@@ -18,6 +19,7 @@ mod executor;
 pub use executor::execution_build_record;
 mod image;
 mod lock;
+pub mod prebuilt;
 mod preparation;
 mod preparation_groups;
 mod runtime;
@@ -31,9 +33,10 @@ pub use lock::{
 pub use runtime::{
     BuildCache, CapturedLaunch, Engine, LaunchAuthorization, ReadOnlyInput, TargetSelection, build,
     build_prepared, build_prepared_with_cache, build_prepared_with_executor, detect_engine, doctor,
-    doctor_prepared, launch, launch_prepared, launch_repository, launch_repository_prepared,
-    launch_repository_prepared_with_inputs, launch_repository_prepared_with_inputs_captured,
-    locked_target_environments, locked_tool_versions,
+    doctor_prepared, launch, launch_prebuilt, launch_prepared, launch_repository,
+    launch_repository_prepared, launch_repository_prepared_with_inputs,
+    launch_repository_prepared_with_inputs_captured, locked_tool_versions,
+    validate_prebuilt_posture,
 };
 pub use storage::{
     StorageImage, StorageImageOwnership, StorageImagePruneScope, StoragePruneFailure,

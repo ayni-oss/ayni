@@ -6,7 +6,7 @@ cd "$repo_root"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/test-prebuilt-runtime.sh [--cli PATH --executor REFERENCE@sha256:DIGEST]
+Usage: scripts/test-prebuilt-runtime.sh [--examples] [--cli PATH --executor REFERENCE@sha256:DIGEST]
 
 Without arguments, builds the host CLI and a matching Linux executor from the
 current checkout. With arguments, reuses an already-built checkout CLI and
@@ -16,8 +16,13 @@ EOF
 
 cli=''
 executor=''
+examples=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --examples)
+      examples=true
+      shift
+      ;;
     --cli)
       cli="${2:?--cli requires a path}"
       shift 2
@@ -221,11 +226,20 @@ mod tests {
     #[test]
     fn certified_runtime_reaches_quality_execution() {
         assert_eq!(2 + 2, 4);
+        assert!(std::fs::write("/etc/ayni/runtime.json", "tampered").is_err());
+        assert!(std::fs::write("/etc/ayni/protected-content.manifest", "tampered").is_err());
+        assert!(std::fs::write("/source/src/lib.rs", "tampered").is_err());
+        std::fs::write("quality-scratch", "discard this workspace change").unwrap();
     }
 }
 EOF
 
 "$cli" env lock --repo-root "$fixture" --base "$base"
+printf '.ayni/\ntarget/\n' > "$fixture/.gitignore"
+git -C "$fixture" init --quiet
+git -C "$fixture" add .
+git -C "$fixture" -c user.name='Ayni fixture' -c user.email='fixture@example.invalid' \
+  -c commit.gpgsign=false commit --quiet -m 'test: initialize portable fixture'
 export AYNI_ENV_CERTIFICATE_SIGNING_KEY=9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60
 export AYNI_ENV_CERTIFICATE_KEY_ID=issue-35-test
 "$cli" env build --repo-root "$fixture" --executor-image "$executor"
@@ -243,3 +257,9 @@ AYNI_PREBUILT_TEST_SIGNING_KEY="$AYNI_ENV_CERTIFICATE_SIGNING_KEY" \
   cargo test -p ayni-cli --test prebuilt_runtime_container_e2e -- --nocapture
 
 printf '\nVerified env build -> certified image -> direct in-image check for %s.\n' "$platform"
+
+if [[ "$examples" == true ]]; then
+  # Example locks may resolve selectors; leave the exact-version fixture shim.
+  export PATH="${PATH#"$scratch/bin:"}"
+  python3 scripts/test-portable-examples.py --cli "$cli" --executor "$executor"
+fi

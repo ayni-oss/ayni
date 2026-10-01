@@ -248,3 +248,37 @@ capabilities explicitly granted by the operator.
 
 To report an unexpected boundary violation, follow the repository's
 [security policy](https://github.com/ayni-oss/ayni/security/policy).
+
+## Portable certified runtimes
+
+Portable quality execution trusts the selected image's protected runner, the
+repository's pinned public keys, and the external launcher. The certificate
+binds a lock to a declared protected-content inventory. Ayni validates signatures,
+canonical encoding, file hashes, symlinks, ownership, and permission constraints
+before admitting the runtime and again in the worker before quality execution.
+It is not a whole-image signature or remote attestation: OS libraries outside
+those roots, image configuration, kernel, and launcher identity are not proved
+by self-inspection. A malicious replacement verifier could lie about its own
+checks; use a trusted immutable image reference at the launcher boundary.
+
+External launches must establish the documented read-only source and runtime,
+unprivileged user, dropped capabilities, disabled privilege escalation, network
+policy, and resource ceilings. Observable unsafe process/filesystem/network
+conditions are rejected; external cgroup configuration remains the launcher's
+responsibility. Ayni creates disposable bounded source workspaces, initializes
+prepared dependencies from signed image content, and writes artifacts only to
+the explicit writable output mount. Neither source content nor tool subprocesses
+can write the root-owned certificate inputs under this launch profile.
+
+Image pulls, registry authentication, publication, and immutable reference
+selection belong to Docker, Podman, Kubernetes, or another trusted launcher.
+Ayni does not accept an arbitrary environment variable as proof of an OCI digest.
+The standalone execution sidecar omits that field; a trusted launcher may retain
+its independently observed digest alongside the certificate and check evidence.
+Copies with the same signed protected content are intentionally portable.
+
+As with ordinary managed execution, this is reproducibility and damage
+containment for trusted repository code, not a hostile-code sandbox or a signed
+proof that test results are truthful. The repository controls its own policy and
+trust keys. Use independent policy review and ephemeral least-privileged workers
+when evaluating untrusted contributions.

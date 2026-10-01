@@ -36,6 +36,21 @@ pub(crate) fn build(
 ) -> ExitCode {
     result((|| {
         let (root, plan) = current_plan(&operation.repo_root, None, registry)?;
+        let context = EnvShowOperation {
+            config: ayni_environment::read_lock(&root)?
+                .repository()
+                .contract_path
+                .clone()
+                .into(),
+            repo_root: root.clone(),
+            output: OutputFormat::Json,
+        };
+        let (_, _, _, policy) = crate::environment::load_context(&context)
+            .map_err(|error| ayni_environment::BackendError::environment(error.message))?;
+        let trust = policy
+            .environment_certificate_trust_policy()
+            .map_err(ayni_environment::BackendError::environment)?;
+        ayni_environment::validate_signing_trust(&trust)?;
         let preparations = dependency_preparations(&root, registry, &plan)?;
         ayni_environment::build_prepared_with_cache(
             &root,
@@ -317,7 +332,7 @@ pub(crate) fn check(operation: CheckOperation, registry: &AdapterRegistry) -> Ex
         "check",
         (|| {
             invalidate_managed_artifact(&operation.config, crate::analysis::SIGNALS_ARTIFACT)?;
-            let (root, preparations, container_config) =
+            let (root, preparations, container_config, runtime) =
                 prepared_quality_environment(&operation.config, registry, operation.authorization)?;
             let mut command = vec![
                 String::from("check"),
@@ -330,8 +345,8 @@ pub(crate) fn check(operation: CheckOperation, registry: &AdapterRegistry) -> Ex
             if operation.debug {
                 command.push(String::from("--debug"));
             }
-            let record = ayni_environment::execution_build_record(&root)?;
-            let code = ayni_environment::launch_repository_prepared(
+            let record = runtime.evidence(&root, &preparations)?;
+            let code = runtime.launch(
                 &root,
                 &preparations,
                 &command,
@@ -351,11 +366,11 @@ pub(crate) fn verify(operation: VerifyOperation, registry: &AdapterRegistry) -> 
                 &operation.config,
                 crate::analysis::VERIFY_SIGNALS_ARTIFACT,
             )?;
-            let (root, preparations, container_config) =
+            let (root, preparations, container_config, runtime) =
                 prepared_quality_environment(&operation.config, registry, operation.authorization)?;
             let command = managed_verify_command(&operation, container_config);
-            let record = ayni_environment::execution_build_record(&root)?;
-            let code = ayni_environment::launch_repository_prepared(
+            let record = runtime.evidence(&root, &preparations)?;
+            let code = runtime.launch(
                 &root,
                 &preparations,
                 &command,
@@ -378,7 +393,7 @@ pub(crate) fn impact_run(operation: ImpactOperation, registry: &AdapterRegistry)
         (|| {
             crate::impact::invalidate_run_artifact(&operation)
                 .map_err(ayni_environment::BackendError::execution)?;
-            let (root, preparations, container_config) =
+            let (root, preparations, container_config, runtime) =
                 prepared_quality_environment(&operation.config, registry, operation.authorization)?;
             let prepared_outputs = preparations
                 .iter()
@@ -396,8 +411,8 @@ pub(crate) fn impact_run(operation: ImpactOperation, registry: &AdapterRegistry)
             .map_err(ayni_environment::BackendError::input)?;
             let command =
                 managed_impact_command(&operation, container_config, session.result_relative());
-            let record = ayni_environment::execution_build_record(&root)?;
-            let captured = ayni_environment::launch_repository_prepared_with_inputs_captured(
+            let record = runtime.evidence(&root, &preparations)?;
+            let captured = runtime.launch_captured(
                 &root,
                 &preparations,
                 &command,
@@ -513,12 +528,114 @@ fn output_name(output: OutputFormat) -> &'static str {
     }
 }
 
+enum QualityRuntime {
+    Local,
+    Prebuilt(Box<ayni_environment::prebuilt::RuntimeIdentity>),
+}
+
+impl QualityRuntime {
+    fn resolve(
+        root: &Path,
+        authorization: CapabilityAuthorization,
+    ) -> Result<Self, ayni_environment::BackendError> {
+        let runtime = crate::prebuilt_runtime::verify(root)
+            .map_err(|error| ayni_environment::BackendError::environment(error.message))?;
+        if let Some(runtime) = runtime {
+            ayni_environment::validate_prebuilt_posture(
+                root,
+                &ayni_environment::read_lock(root)?,
+                launch_authorization(authorization),
+            )?;
+            Ok(Self::Prebuilt(Box::new(runtime)))
+        } else {
+            Ok(Self::Local)
+        }
+    }
+
+    fn evidence(
+        &self,
+        root: &Path,
+        preparations: &[DependencyPreparationPlan],
+    ) -> Result<serde_json::Value, ayni_environment::BackendError> {
+        match self {
+            Self::Local => ayni_environment::execution_build_record(root),
+            Self::Prebuilt(runtime) => {
+                let outputs = preparations
+                    .iter()
+                    .flat_map(|plan| plan.outputs.iter().map(|output| output.mount_path.clone()))
+                    .collect::<Vec<_>>();
+                let source = crate::analysis::source_fingerprint_excluding(root, &outputs)
+                    .map_err(ayni_environment::BackendError::execution)?;
+                Ok(
+                    serde_json::json!({"prebuilt_runtime": runtime, "source_snapshot_fingerprint": source}),
+                )
+            }
+        }
+    }
+
+    fn launch(
+        &self,
+        root: &Path,
+        preparations: &[DependencyPreparationPlan],
+        command: &[String],
+        authorization: ayni_environment::LaunchAuthorization,
+    ) -> Result<i32, ayni_environment::BackendError> {
+        if matches!(self, Self::Local) {
+            return ayni_environment::launch_repository_prepared(
+                root,
+                preparations,
+                command,
+                authorization,
+            );
+        }
+        let output = self.launch_captured(root, preparations, command, authorization, &[])?;
+        use std::io::Write;
+        std::io::stdout()
+            .write_all(&output.stdout)
+            .and_then(|()| std::io::stderr().write_all(&output.stderr))
+            .map_err(|error| ayni_environment::BackendError::execution(error.to_string()))?;
+        Ok(output.code)
+    }
+
+    fn launch_captured(
+        &self,
+        root: &Path,
+        preparations: &[DependencyPreparationPlan],
+        command: &[String],
+        authorization: ayni_environment::LaunchAuthorization,
+        inputs: &[ayni_environment::ReadOnlyInput],
+    ) -> Result<ayni_environment::CapturedLaunch, ayni_environment::BackendError> {
+        match self {
+            Self::Local => ayni_environment::launch_repository_prepared_with_inputs_captured(
+                root,
+                preparations,
+                command,
+                authorization,
+                inputs,
+            ),
+            Self::Prebuilt(runtime) => ayni_environment::launch_prebuilt(
+                root,
+                preparations,
+                command,
+                authorization,
+                inputs,
+                runtime,
+            ),
+        }
+    }
+}
+
 fn prepared_quality_environment(
     config: &Path,
     registry: &AdapterRegistry,
     authorization: CapabilityAuthorization,
 ) -> Result<
-    (std::path::PathBuf, Vec<DependencyPreparationPlan>, String),
+    (
+        std::path::PathBuf,
+        Vec<DependencyPreparationPlan>,
+        String,
+        QualityRuntime,
+    ),
     ayni_environment::BackendError,
 > {
     let repo_root = config
@@ -540,7 +657,8 @@ fn prepared_quality_environment(
         ))
     })?;
     let container_config = format!("./{}", relative.to_string_lossy().replace('\\', "/"));
-    Ok((root, preparations, container_config))
+    let runtime = QualityRuntime::resolve(&root, authorization)?;
+    Ok((root, preparations, container_config, runtime))
 }
 
 fn invalidate_managed_artifact(
@@ -674,13 +792,11 @@ fn current_plan(
     }
 }
 
-pub(crate) fn validate_prebuilt_source(
+pub(crate) fn validate_quality_source(
     root: &Path,
-    config: &Path,
     registry: &AdapterRegistry,
-) -> Result<String, ayni_environment::BackendError> {
-    let (root, _) = current_plan(root, Some(config), registry)?;
-    Ok(ayni_environment::read_lock(&root)?.fingerprint().to_owned())
+) -> Result<(), ayni_environment::BackendError> {
+    current_plan(root, None, registry).map(|_| ())
 }
 
 fn ensure_requested_contract_matches_lock(
@@ -806,12 +922,28 @@ fn persist_execution_evidence(
     }
     let bytes = std::fs::read(&path)
         .map_err(|error| ayni_environment::BackendError::execution(error.to_string()))?;
-    let evidence = serde_json::json!({
+    let mut evidence = serde_json::json!({
         "schema_version": "1",
         "artifact": path.file_name().expect("artifact filename").to_string_lossy(),
         "artifact_digest": ayni_core::sha256_fingerprint(&bytes),
         "build": record,
     });
+    if let Some(runtime) = evidence["build"].get("prebuilt_runtime").cloned() {
+        evidence["source_snapshot_fingerprint"] =
+            evidence["build"]["source_snapshot_fingerprint"].clone();
+        evidence
+            .as_object_mut()
+            .expect("evidence object")
+            .remove("build");
+        evidence["prebuilt_runtime"] = runtime;
+        let result: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|error| ayni_environment::BackendError::execution(error.to_string()))?;
+        // Impact carries its candidate identity in the plan; checks carry the source digest directly.
+        evidence["source_fingerprint"] = result
+            .get("source_fingerprint")
+            .cloned()
+            .unwrap_or_else(|| result["plan"]["candidate"]["fingerprint"].clone());
+    }
     let relative = Path::new(artifact).with_file_name("execution.json");
     crate::analysis::persist_artifact_at(root, &relative.to_string_lossy(), &evidence.to_string())
         .map_err(ayni_environment::BackendError::execution)

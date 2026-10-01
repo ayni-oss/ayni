@@ -19,7 +19,7 @@ const WORKSPACE_MANIFEST: &str = "/opt/ayni/inputs/workspace-files";
 
 /// Operator-owned authorization for repository-requested runtime capabilities.
 /// This value is intentionally not stored in the repository lock.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LaunchAuthorization {
     pub allow_network: bool,
     pub allow_docker_socket: bool,
@@ -134,7 +134,9 @@ pub struct ReadOnlyInput {
     pub destination: String,
 }
 
+mod portable;
 mod snapshot;
+pub use portable::{launch as launch_prebuilt, validate_posture as validate_prebuilt_posture};
 
 fn managed_workspace_snapshot(
     root: &Path,
@@ -432,20 +434,6 @@ fn repository_launch_args(request: RepositoryLaunch<'_>) -> Result<Vec<String>, 
     args.push("--".into());
     args.extend(request.command.iter().cloned());
     Ok(args)
-}
-
-pub fn locked_target_environments(
-    lock: &EnvironmentLock,
-) -> Result<BTreeMap<String, BTreeMap<String, String>>, BackendError> {
-    lock.targets()
-        .iter()
-        .map(|target| {
-            Ok((
-                format!("{}:{}", target.target.language.as_str(), target.target.root),
-                target_environment(target)?.into_iter().collect(),
-            ))
-        })
-        .collect()
 }
 
 pub fn locked_tool_versions(lock: &EnvironmentLock) -> Vec<ArtifactToolVersion> {

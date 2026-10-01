@@ -26,7 +26,7 @@ set -eu
 for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
 done
-for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup /home/ayni/.cache/cargo/bin; do
+for root in @PROTECTED_ROOTS@; do
     [ ! -e "$root" ] || {
         unsupported=$(/usr/bin/find "$root" -xdev ! -type d ! -type f ! -type l -printf x -quit)
         [ -z "$unsupported" ] || { echo "unsupported protected content below $root" >&2; exit 1; }
@@ -35,7 +35,7 @@ done
 file_list=$(/usr/bin/mktemp /tmp/ayni-protected-files.XXXXXX)
 sorted_list=$(/usr/bin/mktemp /tmp/ayni-protected-files-sorted.XXXXXX)
 trap '/usr/bin/rm -f "$file_list" "$sorted_list"' 0 HUP INT TERM
-for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup /home/ayni/.cache/cargo/bin; do
+for root in @PROTECTED_ROOTS@; do
     [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type f -print0 >> "$file_list"
 done
 LC_ALL=C /usr/bin/sort -z "$file_list" -o "$sorted_list"
@@ -46,10 +46,20 @@ set -eu
 for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
 done
-for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup /home/ayni/.cache/cargo/bin; do
+for root in @PROTECTED_ROOTS@; do
     [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type l -printf '%p\0%l\0'
 done
 "#;
+
+fn inventory_script(template: &str) -> String {
+    let roots = crate::certificate::PROTECTED_FILE_ROOTS
+        .iter()
+        .chain(crate::certificate::PROTECTED_TREE_ROOTS)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" ");
+    template.replace("@PROTECTED_ROOTS@", &roots)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Engine {
@@ -688,7 +698,7 @@ impl BuildInput {
             ));
         }
         let dockerfile = format!(
-            "FROM {assembled_tag}@{assembled_image}\nUSER root\nCOPY --chown=0:0 certificate.json {certificate_path}\nCOPY --chown=0:0 protected-content.manifest {manifest_path}\nRUN /usr/bin/chown 0:0 {certificate_path} {manifest_path} \\\n    && /usr/bin/chmod 0444 {certificate_path} {manifest_path}\nLABEL {owner_label}=\"{owner}\" \\\n      {schema_label}=\"{schema}\" \\\n      {key_label}=\"{key_id}\" \\\n      {root_label}=\"{content_root}\"\nUSER 10001:10001\nWORKDIR /workspace\n",
+            "FROM {assembled_tag}\nUSER root\nCOPY --chown=0:0 certificate.json {certificate_path}\nCOPY --chown=0:0 protected-content.manifest {manifest_path}\nRUN /usr/bin/chown 0:0 {certificate_path} {manifest_path} \\\n    && /usr/bin/chmod 0444 {certificate_path} {manifest_path}\nLABEL {owner_label}=\"{owner}\" \\\n      {schema_label}=\"{schema}\" \\\n      {key_label}=\"{key_id}\" \\\n      {root_label}=\"{content_root}\"\nUSER 10001:10001\nWORKDIR /workspace\n",
             certificate_path = CERTIFICATE_PATH,
             manifest_path = MANIFEST_PATH,
             owner_label = IMAGE_OWNER_LABEL,
@@ -806,7 +816,7 @@ fn generate_manifest(root: &Path, engine: Engine, image: &str) -> Result<String,
         engine,
         image,
         "/bin/sh",
-        &["-c", FILE_INVENTORY_SCRIPT],
+        &["-c", &inventory_script(FILE_INVENTORY_SCRIPT)],
         "generate protected-content file hashes",
     )?;
     let symlinks = image_process_output(
@@ -814,7 +824,7 @@ fn generate_manifest(root: &Path, engine: Engine, image: &str) -> Result<String,
         engine,
         image,
         "/bin/sh",
-        &["-c", SYMLINK_INVENTORY_SCRIPT],
+        &["-c", &inventory_script(SYMLINK_INVENTORY_SCRIPT)],
         "generate protected-content symlink inventory",
     )?;
     crate::certificate::manifest_from_inventory(&files, &symlinks)
@@ -1032,27 +1042,6 @@ mod cache_tests {
         assert!(!FILE_INVENTORY_SCRIPT.contains(" | "));
         for command in ["/usr/bin/find", "/usr/bin/sort", "/usr/bin/xargs"] {
             assert!(FILE_INVENTORY_SCRIPT.contains(command));
-        }
-    }
-
-    #[test]
-    fn certification_and_runtime_verification_share_protected_roots() {
-        for root in crate::certificate::PROTECTED_FILE_ROOTS
-            .iter()
-            .chain(crate::certificate::PROTECTED_TREE_ROOTS)
-        {
-            assert!(
-                FILE_INVENTORY_SCRIPT
-                    .split_ascii_whitespace()
-                    .any(|value| value.trim_end_matches(';') == *root),
-                "file inventory is missing {root}"
-            );
-            assert!(
-                SYMLINK_INVENTORY_SCRIPT
-                    .split_ascii_whitespace()
-                    .any(|value| value.trim_end_matches(';') == *root),
-                "symlink inventory is missing {root}"
-            );
         }
     }
 

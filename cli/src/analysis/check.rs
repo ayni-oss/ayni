@@ -330,9 +330,6 @@ fn persist_incomplete_execution_artifact(
 }
 
 fn ensure_analyze_directories(workspace_root: &Path) -> Result<(), String> {
-    if crate::prebuilt_runtime::active() {
-        return Ok(());
-    }
     fs::create_dir_all(workspace_root.join(ARTIFACTS_DIR)).map_err(|error| error.to_string())?;
     Ok(())
 }

@@ -55,22 +55,25 @@ fn require_success(output: &Output, description: &str) {
     );
 }
 
-fn host_identity() -> String {
-    let uid = command_output(Command::new("id").arg("-u"), "read host uid");
-    let gid = command_output(Command::new("id").arg("-g"), "read host gid");
-    format!(
-        "{}:{}",
-        String::from_utf8_lossy(&uid.stdout).trim(),
-        String::from_utf8_lossy(&gid.stdout).trim()
-    )
-}
-
-fn clear_quality_artifact(source: &Path) {
-    let _ = fs::remove_dir_all(source.join(".ayni/last"));
-}
-
 fn run_check(image: &str, source: &Path) -> Output {
-    clear_quality_artifact(source);
+    run_quality(image, source, &["check"], &[])
+}
+
+fn run_quality(image: &str, source: &Path, arguments: &[&str], extra: &[&str]) -> Output {
+    let network = extra
+        .windows(2)
+        .find(|pair| pair[0] == "--network")
+        .map_or("none", |pair| pair[1]);
+    let extra = extra
+        .chunks(2)
+        .filter(|pair| pair[0] != "--network")
+        .flatten()
+        .copied()
+        .collect::<Vec<_>>();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(source, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::create_dir_all(source.join(".ayni")).unwrap();
+    fs::set_permissions(source.join(".ayni"), fs::Permissions::from_mode(0o777)).unwrap();
     let source = source.canonicalize().expect("canonical source");
     command_output(
         Command::new("docker")
@@ -78,21 +81,36 @@ fn run_check(image: &str, source: &Path) -> Output {
                 "run",
                 "--rm",
                 "--network",
-                "none",
+                network,
                 "--read-only",
                 "--cap-drop",
                 "ALL",
                 "--security-opt",
                 "no-new-privileges",
                 "--user",
-                &host_identity(),
+                "10001:10001",
                 "--mount",
                 &format!(
-                    "type=bind,source={},target=/workspace,readonly",
+                    "type=bind,source={},target=/source,readonly",
                     source.display()
                 ),
+                "--mount",
+                &format!(
+                    "type=bind,source={},target=/source/.ayni",
+                    source.join(".ayni").display()
+                ),
                 "--tmpfs",
-                "/tmp:rw,exec,nosuid,size=1g",
+                "/workspace:rw,exec,nosuid,size=4g,mode=1777",
+                "--tmpfs",
+                "/tmp:rw,exec,nosuid,size=4g,mode=1777",
+                "--env",
+                "GIT_CONFIG_COUNT=1",
+                "--env",
+                "GIT_CONFIG_KEY_0=safe.directory",
+                "--env",
+                "GIT_CONFIG_VALUE_0=/source",
+                "--env",
+                "GIT_OPTIONAL_LOCKS=0",
                 "--env",
                 "HOME=/tmp/home",
                 "--env",
@@ -100,13 +118,14 @@ fn run_check(image: &str, source: &Path) -> Output {
                 "--env",
                 "CARGO_TARGET_DIR=/tmp/target",
                 "--workdir",
-                "/workspace",
+                "/source",
                 "--entrypoint",
-                "/bin/sh",
-                image,
-                "-c",
-                "mkdir -p /tmp/home /tmp/target && exec /usr/local/bin/ayni check --config .ayni.toml --output json",
-            ]),
+                "/usr/local/bin/ayni",
+            ])
+            .args(extra)
+            .arg(image)
+            .args(arguments)
+            .args(["--config", ".ayni.toml", "--output", "json"]),
         "run certified environment check",
     )
 }
@@ -224,6 +243,9 @@ fn copy_tree(source: &Path, destination: &Path) {
     fs::create_dir_all(destination).expect("create copied source directory");
     for entry in fs::read_dir(source).expect("read source directory") {
         let entry = entry.expect("read source entry");
+        if entry.file_name() == ".ayni" {
+            continue;
+        }
         let file_type = entry.file_type().expect("read source entry type");
         let target = destination.join(entry.file_name());
         if file_type.is_dir() {
@@ -251,8 +273,11 @@ fn certified_environment_accepts_valid_runtime_and_rejects_every_identity_mismat
     let Some(seed) = required("AYNI_PREBUILT_TEST_SIGNING_KEY") else {
         return;
     };
-    let source = PathBuf::from(source);
-    assert!(source.is_dir(), "test source is missing");
+    let original_source = PathBuf::from(source);
+    assert!(original_source.is_dir(), "test source is missing");
+    let consumer = TempDir::new().expect("clean consumer");
+    copy_tree(&original_source, consumer.path());
+    let source = consumer.path().to_path_buf();
     let signing_key = decode_seed(&seed);
     let extracted = TempDir::new().expect("extracted protected content");
     let certificate_path = extracted.path().join("runtime.json");
@@ -281,9 +306,71 @@ fn certified_environment_accepts_valid_runtime_and_rejects_every_identity_mismat
         "successful evidence must retain locked tool versions"
     );
     assert!(
-        !source.join(".ayni/last/signals.json").exists(),
-        "direct prebuilt checks must not mutate read-only source evidence"
+        source.join(".ayni/last/signals.json").exists(),
+        "prebuilt checks must persist evidence in the output mount"
     );
+
+    require_success(
+        &run_quality(
+            &image,
+            &source,
+            &["verify", "test"],
+            &["--workdir", "/tmp", "--env", "AYNI_SOURCE_ROOT=/source"],
+        ),
+        "explicit portable source root",
+    );
+    assert!(!source.join(".ayni/environment/build.json").exists());
+    let sidecar: serde_json::Value =
+        serde_json::from_slice(&fs::read(source.join(".ayni/last/execution.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        sidecar["prebuilt_runtime"]["certificate"],
+        evidence["prebuilt_runtime"]["certificate"]
+    );
+    assert_eq!(
+        sidecar["artifact_digest"],
+        sha256_fingerprint(fs::read(source.join(".ayni/last/signals.json")).unwrap())
+    );
+    assert!(sidecar.get("oci_digest").is_none());
+    let src = source.join("src/lib.rs");
+    let original_source = fs::read_to_string(&src).unwrap();
+    fs::write(
+        &src,
+        format!("{original_source}\n// portable source edit\n"),
+    )
+    .unwrap();
+    let changed = run_check(&image, &source);
+    require_success(&changed, "reuse image after source-only edit");
+    let changed: serde_json::Value = serde_json::from_slice(&changed.stdout).unwrap();
+    assert_ne!(
+        changed["source_fingerprint"],
+        evidence["source_fingerprint"]
+    );
+    assert_eq!(changed["prebuilt_runtime"], evidence["prebuilt_runtime"]);
+    let repository_result = fs::read(source.join(".ayni/last/signals.json")).unwrap();
+    let verify = run_quality(&image, &source, &["verify", "test"], &[]);
+    require_success(&verify, "portable focused verify");
+    assert!(source.join(".ayni/verify/last/signals.json").is_file());
+    assert_eq!(
+        repository_result,
+        fs::read(source.join(".ayni/last/signals.json")).unwrap()
+    );
+    let impact = run_quality(&image, &source, &["impact", "run", "--base", "HEAD"], &[]);
+    require_success(&impact, "portable impact run");
+    assert!(source.join(".ayni/impact/last/impact.json").is_file());
+    assert!(source.join(".ayni/impact/last/execution.json").is_file());
+    assert_eq!(
+        fs::read_to_string(&src).unwrap(),
+        format!("{original_source}\n// portable source edit\n")
+    );
+    assert!(!source.join("target").exists());
+    for (flags, message) in [
+        (vec!["--user", "0:0"], "requires user 10001:10001"),
+        (vec!["--network", "bridge"], "requires disabled networking"),
+        (vec!["--read-only=false"], "must be read-only"),
+    ] {
+        assert_rejected(&run_quality(&image, &source, &["check"], &flags), message);
+    }
 
     let mut invalid_signature = original.clone();
     let replacement = if invalid_signature.signature.starts_with("00") {
@@ -295,7 +382,17 @@ fn certified_environment_accepts_valid_runtime_and_rejects_every_identity_mismat
     let path = extracted.path().join("invalid-signature.json");
     write_certificate(&path, &invalid_signature);
     let altered = images.track(build_derived(&image, Some(&path), None, ""));
-    assert_rejected(&run_check(&altered, &source), "signature is invalid");
+    assert_rejected(
+        &run_quality(
+            &altered,
+            &source,
+            &["check"],
+            &["--workdir", "/tmp", "--env", "AYNI_SOURCE_ROOT=/source"],
+        ),
+        "signature is invalid",
+    );
+    assert!(!source.join(".ayni/last/signals.json").exists());
+    assert!(!source.join(".ayni/last/execution.json").exists());
 
     let mut untrusted = original.clone();
     untrusted.key_id = String::from("untrusted-test-key");

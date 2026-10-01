@@ -227,7 +227,7 @@ fn managed_target_environment(
     let Some(serialized) =
         std::env::var_os(MANAGED_TARGET_ENVIRONMENTS).filter(|value| !value.is_empty())
     else {
-        return crate::prebuilt_runtime::active_target_environment(language, root);
+        return Ok(None);
     };
     let environments: BTreeMap<String, BTreeMap<String, String>> =
         serde_json::from_str(&serialized.to_string_lossy())
