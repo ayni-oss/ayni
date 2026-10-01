@@ -139,7 +139,7 @@ fn print_plan_markdown(plan: &ImpactPlan, mode: ExecutionMode) {
 }
 
 pub(super) fn effective_execution_mode(requested: ExecutionMode) -> ExecutionMode {
-    effective_execution_mode_when(requested, managed_execution_active())
+    effective_execution_mode_when(requested, verified_environment_active())
 }
 
 pub(super) fn effective_execution_mode_when(

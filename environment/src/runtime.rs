@@ -892,7 +892,7 @@ fn execute_launch_captured(
     })
 }
 
-pub(crate) fn target_environment(
+pub fn target_environment(
     target: &LockedTargetEnvironment,
 ) -> Result<Vec<(String, String)>, BackendError> {
     let mut variables = BTreeMap::new();

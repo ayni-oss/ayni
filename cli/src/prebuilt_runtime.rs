@@ -1,12 +1,89 @@
-//! CLI policy orchestration for the portable environment backend.
-use crate::application::EnvShowOperation;
-use crate::application::OutputFormat;
+//! Resolve a verified Ayni environment for the current process.
+//!
+//! Quality commands never launch or re-execute through another container. A
+//! runtime marker is only a discovery signal; when it is present it must verify
+//! against the attached checkout before collectors may run.
+use crate::application::{EnvShowOperation, OutputFormat};
 use crate::application_error::ApplicationError;
-use std::path::Path;
+use ayni_core::{ArtifactToolVersion, Language};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
-pub(crate) fn verify(
+#[derive(Clone, Debug)]
+pub(crate) struct Context {
+    pub runtime: ayni_environment::prebuilt::RuntimeIdentity,
+    pub lock_fingerprint: String,
+    pub tool_versions: Vec<ArtifactToolVersion>,
+    pub targets: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+static CONTEXT: OnceLock<Mutex<Option<Context>>> = OnceLock::new();
+
+fn context_slot() -> &'static Mutex<Option<Context>> {
+    CONTEXT.get_or_init(|| Mutex::new(None))
+}
+
+pub(crate) fn current() -> Option<Context> {
+    context_slot().lock().expect("runtime context lock").clone()
+}
+
+/// Resolves an explicit checkout-location hint supplied by an image launcher.
+/// The hint has no bearing on whether an environment is trusted: runtime
+/// provenance is established solely by the root-owned metadata marker.
+pub(crate) fn resolve_config(config: &Path) -> PathBuf {
+    let Some(root) = std::env::var_os("AYNI_SOURCE_ROOT").filter(|value| !value.is_empty()) else {
+        return config.into();
+    };
+    if config.is_relative()
+        && std::fs::symlink_metadata(ayni_environment::prebuilt::METADATA_PATH).is_ok()
+    {
+        Path::new(&root).join(config)
+    } else {
+        config.into()
+    }
+}
+
+pub(crate) fn activate(config: &Path) -> Result<(), ApplicationError> {
+    let config = resolve_config(config);
+    let root = config
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let Some((runtime, lock)) = verify_with_lock(root)? else {
+        *context_slot().lock().expect("runtime context lock") = None;
+        return Ok(());
+    };
+    let targets = lock
+        .targets()
+        .iter()
+        .map(|target| {
+            let key = format!("{}:{}", target.target.language, target.target.root);
+            let activation = ayni_environment::target_environment(target)
+                .map_err(|error| ApplicationError::environment(error.message))?
+                .into_iter()
+                .collect();
+            Ok((key, activation))
+        })
+        .collect::<Result<_, ApplicationError>>()?;
+    *context_slot().lock().expect("runtime context lock") = Some(Context {
+        runtime,
+        lock_fingerprint: lock.fingerprint().into(),
+        tool_versions: ayni_environment::locked_tool_versions(&lock),
+        targets,
+    });
+    Ok(())
+}
+
+fn verify_with_lock(
     root: &Path,
-) -> Result<Option<ayni_environment::prebuilt::RuntimeIdentity>, ApplicationError> {
+) -> Result<
+    Option<(
+        ayni_environment::prebuilt::RuntimeIdentity,
+        ayni_core::EnvironmentLock,
+    )>,
+    ApplicationError,
+> {
     let Some(runtime) = ayni_environment::prebuilt::discover()? else {
         return Ok(None);
     };
@@ -21,55 +98,15 @@ pub(crate) fn verify(
         .environment_certificate_trust_policy()
         .map_err(ApplicationError::environment)?;
     ayni_environment::prebuilt::verify(&runtime, &lock, &trust)?;
-    Ok(Some(runtime))
+    Ok(Some((runtime, lock)))
 }
 
-pub(crate) fn validate_worker() -> Result<(), ApplicationError> {
-    let Some(expected) = std::env::var_os("AYNI_MANAGED_PREBUILT_RUNTIME") else {
-        return Ok(());
-    };
-    let expected: ayni_environment::prebuilt::RuntimeIdentity =
-        serde_json::from_str(&expected.to_string_lossy()).map_err(|error| {
-            ApplicationError::environment(format!("invalid runtime execution context: {error}"))
-        })?;
-    let root = std::env::current_dir()
-        .map_err(|error| ApplicationError::environment(error.to_string()))?;
-    let source = std::env::var("AYNI_MANAGED_PREBUILT_SOURCE")
-        .map_err(|_| ApplicationError::environment("missing portable source context"))?;
-    let authorization = std::env::var("AYNI_MANAGED_PREBUILT_AUTHORIZATION")
-        .map_err(|_| ApplicationError::environment("missing portable authorization context"))?;
-    let authorization = serde_json::from_str(&authorization).map_err(|error| {
-        ApplicationError::environment(format!("invalid portable authorization context: {error}"))
-    })?;
-    ayni_environment::validate_prebuilt_posture(
-        Path::new(&source),
-        &ayni_environment::read_lock(&root)?,
-        authorization,
-    )?;
-    crate::environment_backend::validate_quality_source(&root, &crate::build_registry())?;
-    if verify(&root)?.as_ref() != Some(&expected) {
-        return Err(ApplicationError::environment(
-            "prebuilt runtime changed before execution",
-        ));
-    }
-    Ok(())
-}
-
-pub(crate) fn resolve_source_config(operation: &mut crate::application::Operation) {
-    use crate::application::{ExecutionMode, Operation};
-    let Some(root) = std::env::var_os("AYNI_SOURCE_ROOT").filter(|value| !value.is_empty()) else {
-        return;
-    };
-    let (config, mode) = match operation {
-        Operation::Check(value) => (&mut value.config, value.execution_mode),
-        Operation::Verify(value) => (&mut value.config, value.execution_mode),
-        Operation::ImpactRun(value) => (&mut value.config, value.execution_mode),
-        _ => return,
-    };
-    if mode == ExecutionMode::Managed
-        && std::fs::symlink_metadata(ayni_environment::prebuilt::METADATA_PATH).is_ok()
-        && config.is_relative()
-    {
-        *config = Path::new(&root).join(&*config);
-    }
+pub(crate) fn target_environment(
+    language: Language,
+    root: &str,
+) -> Option<BTreeMap<String, String>> {
+    current()?
+        .targets
+        .get(&format!("{language}:{root}"))
+        .cloned()
 }

@@ -52,8 +52,16 @@ pub(crate) struct SigningMaterial {
 }
 
 impl SigningMaterial {
-    pub(crate) fn from_env() -> Result<Self, BackendError> {
-        Self::from_values(&required(SIGNING_KEY_ENV)?, &required(KEY_ID_ENV)?)
+    pub(crate) fn from_env() -> Result<Option<Self>, BackendError> {
+        let key = env::var(SIGNING_KEY_ENV).ok();
+        let key_id = env::var(KEY_ID_ENV).ok();
+        match (key, key_id) {
+            (None, None) => Ok(None),
+            (Some(key), Some(key_id)) => Self::from_values(&key, &key_id).map(Some),
+            _ => Err(BackendError::input(
+                "set both AYNI_ENV_CERTIFICATE_SIGNING_KEY and AYNI_ENV_CERTIFICATE_KEY_ID, or set neither for an unsigned build",
+            )),
+        }
     }
 
     fn from_values(seed: &str, key_id: &str) -> Result<Self, BackendError> {
@@ -70,7 +78,9 @@ impl SigningMaterial {
 pub fn validate_signing_trust(
     trust: &ayni_core::EnvironmentCertificateTrustPolicy,
 ) -> Result<(), BackendError> {
-    let signing = SigningMaterial::from_env()?;
+    let Some(signing) = SigningMaterial::from_env()? else {
+        return Ok(());
+    };
     if !trust.is_empty()
         && !trust.trusts_key(&signing.key_id, &signing.key.verifying_key().to_bytes())
     {
@@ -122,7 +132,7 @@ pub(crate) fn create(
     lock: &EnvironmentLock,
     plan: &ImagePlan,
     manifest: String,
-    signing: &SigningMaterial,
+    signing: Option<&SigningMaterial>,
 ) -> Result<Certification, BackendError> {
     validate_manifest(&manifest)?;
     let protected_content_root = sha256_fingerprint(manifest.as_bytes());
@@ -136,10 +146,21 @@ pub(crate) fn create(
     .map_err(|error| {
         BackendError::environment(format!("cannot create environment certificate: {error}"))
     })?;
-    let envelope = EnvironmentCertificateEnvelope::sign(certificate, &signing.key_id, &signing.key)
-        .map_err(|error| {
-            BackendError::environment(format!("cannot sign environment certificate: {error}"))
-        })?;
+    let envelope = match signing {
+        Some(signing) => {
+            EnvironmentCertificateEnvelope::sign(certificate, &signing.key_id, &signing.key)
+                .map_err(|error| {
+                    BackendError::environment(format!(
+                        "cannot sign environment certificate: {error}"
+                    ))
+                })?
+        }
+        None => EnvironmentCertificateEnvelope::unsigned(certificate).map_err(|error| {
+            BackendError::environment(format!(
+                "cannot create unsigned environment certificate: {error}"
+            ))
+        })?,
+    };
     let mut certificate = serde_json::to_string(&envelope).map_err(|error| {
         BackendError::execution(format!("cannot serialize environment certificate: {error}"))
     })?;
@@ -151,7 +172,7 @@ pub(crate) fn create(
     }
     let identity = CertificateIdentity {
         schema_version: ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION.into(),
-        key_id: signing.key_id.clone(),
+        key_id: envelope.key_id.clone(),
         protected_content_root,
         certificate_digest: sha256_fingerprint(certificate.as_bytes()),
     };
@@ -468,17 +489,6 @@ pub fn parse_protected_manifest(
 
 fn validate_manifest(manifest: &str) -> Result<(), BackendError> {
     parse_protected_manifest(manifest).map(|_| ())
-}
-
-fn required(name: &str) -> Result<String, BackendError> {
-    env::var(name)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            BackendError::environment(format!(
-                "{name} is required to build a certified environment image"
-            ))
-        })
 }
 
 fn validate_key_id(value: &str) -> Result<(), BackendError> {

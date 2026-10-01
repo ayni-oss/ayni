@@ -1,8 +1,10 @@
+#![allow(dead_code)]
+
 use crate::analysis::{
-    build_analyze_targets, enabled_signal_kinds, invalidate_artifact_at, managed_execution_active,
-    persist_artifact_at, signal_kind_slug, workspace_root_from_config_path,
+    build_analyze_targets, enabled_signal_kinds, invalidate_artifact_at, persist_artifact_at,
+    signal_kind_slug, verified_environment_active, workspace_root_from_config_path,
 };
-use crate::application::{ExecutionMode, ImpactOperation, OutputFormat};
+use crate::application::{ImpactOperation, OutputFormat};
 use crate::build_registry;
 use crate::policy::load_from_path;
 use crate::ui::cancellation::SignalCancellation;
@@ -10,10 +12,10 @@ use ayni_adapters_common::exec::run_command_structured_cancellable;
 use ayni_adapters_common::paths::validate_configured_root_containment;
 use ayni_core::{
     AYNI_SIGNAL_SCHEMA_VERSION, AdapterRegistry, AyniPolicy, CancellationToken, ChangedPath,
-    Findings, IMPACT_SCHEMA_VERSION, ImpactArtifact, ImpactConfidence, ImpactExecution,
-    ImpactExecutionIssue, ImpactIdentity, ImpactIdentityKind, ImpactPlan, ImpactReason,
-    ImpactReasonKind, ImpactRequest, ImpactUncertainty, ImpactUncertaintyKind, RunOutcome,
-    SelectedCheck, SignalRow, VerificationSelection,
+    ExecutionMode, Findings, IMPACT_SCHEMA_VERSION, ImpactArtifact, ImpactConfidence,
+    ImpactExecution, ImpactExecutionIssue, ImpactIdentity, ImpactIdentityKind, ImpactPlan,
+    ImpactReason, ImpactReasonKind, ImpactRequest, ImpactUncertainty, ImpactUncertaintyKind,
+    RunOutcome, SelectedCheck, SignalRow, VerificationSelection,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -749,7 +751,7 @@ fn execute_impact_candidate(
         &collected.rows,
         registry,
         &operation.config,
-        !managed_execution_active(),
+        !verified_environment_active(),
     )?;
     let (_, _, recomputed_plan, after) = prepare_plan(operation, registry, cancellation)?;
     ensure_not_cancelled(cancellation, "impact execution")?;
@@ -1012,7 +1014,7 @@ fn materialize_findings(
     rows: &[SignalRow],
     registry: &AdapterRegistry,
     config_path: &Path,
-    host_execution: bool,
+    _host_execution: bool,
 ) -> Result<Vec<Findings>, Error> {
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
@@ -1036,7 +1038,6 @@ fn materialize_findings(
                     row.language,
                     configured_root,
                     target,
-                    host_execution,
                 ))
             })
             .map_err(|error| Error::execution(error.to_string()))?;

@@ -1,7 +1,7 @@
 use crate::{Findings, ImpactPlan, RunOutcome, SelectedCheck, SignalRow};
 use serde::{Deserialize, Serialize};
 
-pub const IMPACT_SCHEMA_VERSION: &str = "0.1.0";
+pub const IMPACT_SCHEMA_VERSION: &str = "0.2.0";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

@@ -35,7 +35,7 @@ pub use runtime::{
     build_prepared, build_prepared_with_cache, build_prepared_with_executor, detect_engine, doctor,
     doctor_prepared, launch, launch_prebuilt, launch_prepared, launch_repository,
     launch_repository_prepared, launch_repository_prepared_with_inputs,
-    launch_repository_prepared_with_inputs_captured, locked_tool_versions,
+    launch_repository_prepared_with_inputs_captured, locked_tool_versions, target_environment,
     validate_prebuilt_posture,
 };
 pub use storage::{

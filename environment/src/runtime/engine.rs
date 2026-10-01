@@ -311,7 +311,7 @@ pub fn build_prepared_with_cache(
     let executor = crate::executor::resolve(&root, engine, &plan.platform, executor_image)?;
     crate::executor::bind(&mut plan, &executor);
     if cache.to.is_empty()
-        && current_image_state(&root, engine, &lock, preparations, Some(&signing))
+        && current_image_state(&root, engine, &lock, preparations, signing.as_ref())
             .is_ok_and(|(current, _)| current.dockerfile == plan.dockerfile)
     {
         return Ok(format!("current {}", plan.tag));
@@ -324,7 +324,7 @@ pub fn build_prepared_with_cache(
         &lock,
         preparations,
         cache,
-        &signing,
+        signing.as_ref(),
         &executor,
     )?;
     publish_certified_image(&root, engine, &lock, &plan, executor, &candidate)?;
@@ -406,7 +406,7 @@ fn build_image(
     lock: &EnvironmentLock,
     preparations: &[DependencyPreparationPlan],
     cache: &BuildCache,
-    signing: &SigningMaterial,
+    signing: Option<&SigningMaterial>,
     executor: &crate::executor::ExecutorIdentity,
 ) -> Result<CertifiedImage, BackendError> {
     let input = BuildInput::create(root, plan, preparations)?;
@@ -1004,8 +1004,9 @@ fn current_image_state(
     crate::executor::validate_record_image(root, engine, &plan, &record)?;
     let expected = signing
         .map(|signing| {
-            read_image_text_file(root, engine, &plan.tag, MANIFEST_PATH, "manifest")
-                .and_then(|manifest| crate::certificate::create(lock, &plan, manifest, signing))
+            read_image_text_file(root, engine, &plan.tag, MANIFEST_PATH, "manifest").and_then(
+                |manifest| crate::certificate::create(lock, &plan, manifest, Some(signing)),
+            )
         })
         .transpose()?;
     validate_certified_image(

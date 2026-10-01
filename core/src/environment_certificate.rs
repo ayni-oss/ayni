@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Wire version for portable environment certificates.
-pub const ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION: &str = "1";
+pub const ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION: &str = "2";
 
 /// Claims made by a builder about protected, prebuilt environment content.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +77,16 @@ pub struct EnvironmentCertificateEnvelope {
 }
 
 impl EnvironmentCertificateEnvelope {
+    /// Creates metadata for a locally consistent image without asserting a
+    /// builder identity.
+    pub fn unsigned(certificate: EnvironmentCertificate) -> Result<Self, CertificateError> {
+        certificate.canonical_payload()?;
+        Ok(Self {
+            certificate,
+            key_id: String::from("unsigned"),
+            signature: String::new(),
+        })
+    }
     pub fn sign(
         certificate: EnvironmentCertificate,
         key_id: impl Into<String>,
@@ -97,6 +107,12 @@ impl EnvironmentCertificateEnvelope {
         &self,
         trust: &EnvironmentCertificateTrustPolicy,
     ) -> Result<(), CertificateError> {
+        if self.key_id == "unsigned" && self.signature.is_empty() {
+            return Ok(());
+        }
+        if self.key_id == "unsigned" || self.signature.is_empty() {
+            return Err(CertificateError::InvalidSignature);
+        }
         validate_key_id(&self.key_id)?;
         let public_key = trust
             .trusted_keys
