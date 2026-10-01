@@ -11,7 +11,6 @@ fn environment_operations_require_a_valid_lock_without_implicit_provisioning() {
         ["env", "build"],
         ["env", "storage"],
         ["env", "prune"],
-        ["env", "shell"],
     ] {
         let output = ayni().args(arguments).output().expect("launch ayni");
         assert_eq!(output.status.code(), Some(3));
@@ -29,19 +28,19 @@ fn environment_operations_require_a_valid_lock_without_implicit_provisioning() {
 }
 
 #[test]
-fn managed_check_and_verify_require_a_lock_without_implicit_provisioning() {
+fn quality_commands_do_not_require_a_lock() {
     let check = ayni().arg("check").output().expect("launch ayni");
-    assert_eq!(check.status.code(), Some(3));
+    assert_eq!(check.status.code(), Some(2));
     assert!(check.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&check.stderr).contains("environment lock"));
+    assert!(String::from_utf8_lossy(&check.stderr).contains("failed to read"));
 
     let verify = ayni()
         .args(["verify", "test"])
         .output()
         .expect("launch ayni");
-    assert_eq!(verify.status.code(), Some(3));
+    assert_eq!(verify.status.code(), Some(2));
     assert!(verify.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&verify.stderr).contains("environment lock"));
+    assert!(String::from_utf8_lossy(&verify.stderr).contains("failed to read"));
 }
 
 #[test]
@@ -71,7 +70,7 @@ fn contract_validate_is_not_publicly_available() {
 }
 
 #[test]
-fn invalid_host_contract_uses_contract_exit() {
+fn removed_host_flag_uses_cli_input_exit() {
     let output = ayni()
         .args(["check", "--host", "--config", "missing.toml"])
         .output()
@@ -79,11 +78,11 @@ fn invalid_host_contract_uses_contract_exit() {
 
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("failed to read"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unexpected argument '--host'"));
 }
 
 #[test]
-fn managed_capability_authorization_is_rejected_in_host_mode() {
+fn removed_capability_flags_use_cli_input_exit() {
     for arguments in [
         vec!["check", "--host", "--allow-network"],
         vec!["verify", "test", "--host", "--allow-docker-socket"],
@@ -100,8 +99,7 @@ fn managed_capability_authorization_is_rejected_in_host_mode() {
         assert_eq!(output.status.code(), Some(2), "{arguments:?}");
         assert!(output.stdout.is_empty(), "{arguments:?}");
         assert!(
-            String::from_utf8_lossy(&output.stderr)
-                .contains("authorize managed-container capabilities"),
+            String::from_utf8_lossy(&output.stderr).contains("unexpected argument"),
             "{arguments:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
