@@ -37,7 +37,8 @@ def run(cli, executor):
         environment["AYNI_ENV_CERTIFICATE_KEY_ID"] = "issue-35-test"
         environment["AYNI_ENV_CERTIFICATE_SIGNING_KEY"] = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
         base = json.loads((repository / ".ayni.lock").read_text())["provisioning_base"]
-        if not shutil.which("mise"):
+        if sys.platform == "linux":
+            # Exercise the resolver shipped in the locked base, independent of the runner host.
             tools = root / "tools"
             tools.mkdir()
             container = subprocess.check_output(["docker", "create", base["reference"] + "@" + base["digest"]], text=True).strip()
@@ -46,6 +47,8 @@ def run(cli, executor):
             finally:
                 subprocess.run(["docker", "rm", container], check=True, stdout=subprocess.DEVNULL)
             environment["PATH"] = str(tools) + os.pathsep + environment["PATH"]
+        elif not shutil.which("mise"):
+            raise RuntimeError("mise is required on non-Linux contributor hosts")
         try:
             subprocess.run([cli, "env", "lock", "--repo-root", str(builder), "--base", base["reference"] + "@" + base["digest"]], check=True, env=environment)
             subprocess.run(["git", "-C", str(builder), "add", "."], check=True)
@@ -66,8 +69,9 @@ def run(cli, executor):
                 "--mount", f"type=bind,source={output},target=/source/.ayni",
                 "--tmpfs", "/workspace:rw,exec,nosuid,size=4g,mode=1777",
                 "--tmpfs", "/tmp:rw,exec,nosuid,size=8g,mode=1777",
-                "--workdir", "/source", "--entrypoint", "/usr/local/bin/ayni", image,
-                "check", "--output", "json",
+                "--workdir", "/source", "--entrypoint", "/bin/sh", image,
+                # These disposable outputs must be removable by the host's different UID on Linux.
+                "-c", "umask 000; exec /usr/local/bin/ayni check --output json",
             ], text=True, capture_output=True)
             print(result.stderr, file=sys.stderr)
             if result.returncode not in (0, 1):

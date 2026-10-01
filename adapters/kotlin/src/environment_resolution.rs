@@ -46,13 +46,7 @@ fn resolve_mise(
     let output = ayni_adapters_common::exec::run_command(
         request.repo_root(),
         "mise",
-        &[
-            "--no-config".into(),
-            "--no-env".into(),
-            "--no-hooks".into(),
-            "latest".into(),
-            query.clone(),
-        ],
+        &["--no-config".into(), "latest".into(), query.clone()],
         Duration::from_secs(120),
     )
     .map_err(|cause| {

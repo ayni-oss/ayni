@@ -49,13 +49,7 @@ fn resolve_mise(
         VersionRequirement::Unresolved { .. } => provider.to_owned(),
         VersionRequirement::Exact { .. } => unreachable!(),
     };
-    let args = vec![
-        "--no-config".into(),
-        "--no-env".into(),
-        "--no-hooks".into(),
-        "latest".into(),
-        query.clone(),
-    ];
+    let args = vec!["--no-config".into(), "latest".into(), query.clone()];
     let output = ayni_adapters_common::exec::run_command(
         request.repo_root(),
         "mise",

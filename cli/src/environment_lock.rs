@@ -399,12 +399,7 @@ fn resolution_error(error: ayni_core::AdapterError) -> LockError {
 }
 
 fn mise_version(repo_root: &Path) -> Result<String, LockError> {
-    let args = vec![
-        "--no-config".to_owned(),
-        "--no-env".to_owned(),
-        "--no-hooks".to_owned(),
-        "version".to_owned(),
-    ];
+    let args = vec!["--no-config".to_owned(), "version".to_owned()];
     let output = ayni_adapters_common::exec::run_command(
         repo_root,
         "mise",

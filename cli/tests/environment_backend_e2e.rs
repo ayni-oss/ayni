@@ -81,7 +81,7 @@ fn fixture() -> TempDir {
     }
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     write_executable(
         &bin.join("docker"),
@@ -508,7 +508,7 @@ fn npm_dependencies_are_staged_materialized_offline_and_mounted_for_managed_qual
     .unwrap();
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     write_executable(
         &bin.join("docker"),
@@ -641,7 +641,7 @@ fn pnpm_workspace_materializes_all_node_modules_trees_in_one_offline_run() {
     .unwrap();
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     write_executable(
         &bin.join("docker"),
@@ -819,7 +819,7 @@ fn five_language_build_composes_preparation_without_staging_source() {
 
     write_executable(
         &bin.join("mise"),
-        "while [ \"$1\" = \"--no-config\" ] || [ \"$1\" = \"--no-env\" ] || [ \"$1\" = \"--no-hooks\" ]; do shift; done\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
+        "[ \"$1\" = \"--no-config\" ] || exit 2; shift\n[ \"$1\" = \"version\" ] && echo '2026.8.7 linux-x64' && exit 0\nexit 1",
     );
     let record = root.path().join("polyglot");
     write_executable(

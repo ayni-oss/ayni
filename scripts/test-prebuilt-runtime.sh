@@ -160,11 +160,9 @@ mkdir -p "$scratch/bin"
 cat > "$scratch/bin/mise" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$#" -eq 4 \
+if [[ "$#" -eq 2 \
   && "$1" == --no-config \
-  && "$2" == --no-env \
-  && "$3" == --no-hooks \
-  && "$4" == version ]]; then
+  && "$2" == version ]]; then
   printf '%s\n' "${AYNI_ACCEPTANCE_MISE_VERSION:?}"
   exit 0
 fi
