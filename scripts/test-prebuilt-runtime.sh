@@ -89,6 +89,13 @@ base = lock["provisioning_base"]
 print(f'{base["reference"]}@{base["digest"]}')
 PY
 )"
+base_mise_version="$(python3 - "$repo_root/.ayni.lock" <<'PY'
+import json
+import sys
+lock = json.load(open(sys.argv[1]))
+print(lock["provisioning_base"]["mise_version"])
+PY
+)"
 
 if [[ -z "$cli" ]]; then
   source .github/docker/ayni-env.versions
@@ -141,18 +148,29 @@ if [[ -z "$cli" ]]; then
     || { echo 'local registry did not return one immutable executor identity' >&2; exit 4; }
 fi
 
-if ! command -v mise >/dev/null; then
-  if [[ "$(uname -s)" != Linux ]]; then
-    echo 'Mise is required on non-Linux hosts to create the acceptance lock' >&2
-    exit 2
-  fi
-  mkdir -p "$scratch/bin"
-  base_container="$(docker create "$base")"
-  docker cp "$base_container:/usr/local/bin/mise" "$scratch/bin/mise"
-  docker rm "$base_container" >/dev/null
-  chmod 0755 "$scratch/bin/mise"
-  export PATH="$scratch/bin:$PATH"
+# The fixture declares only exact versions, so locking needs mise solely to record
+# its version. Keep this acceptance test independent of the contributor host and
+# report the version of the pinned runtime base that the fixture will build from.
+mkdir -p "$scratch/bin"
+cat > "$scratch/bin/mise" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$#" -eq 4 \
+  && "$1" == --no-config \
+  && "$2" == --no-env \
+  && "$3" == --no-hooks \
+  && "$4" == version ]]; then
+  printf '%s\n' "${AYNI_ACCEPTANCE_MISE_VERSION:?}"
+  exit 0
 fi
+printf 'acceptance fixture mise shim received an unexpected invocation:' >&2
+printf ' %q' "$@" >&2
+printf '\n' >&2
+exit 2
+EOF
+chmod 0755 "$scratch/bin/mise"
+export AYNI_ACCEPTANCE_MISE_VERSION="$base_mise_version"
+export PATH="$scratch/bin:$PATH"
 
 fixture="$scratch/repository"
 mkdir -p "$fixture/src" "$fixture/.ayni"
