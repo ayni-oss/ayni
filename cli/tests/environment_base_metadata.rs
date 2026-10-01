@@ -21,7 +21,7 @@ fn published_base_metadata_matches_the_backend_contract() {
         ayni_core::ENVIRONMENT_LOCK_RECIPE_VERSION
     )));
     assert!(dockerfile.contains("USER 10001:10001"));
-    assert!(dockerfile.contains("ENTRYPOINT [\"ayni\"]"));
+    assert!(dockerfile.contains("CMD [\"/bin/sh\"]"));
     assert!(dockerfile.contains("sha256sum --check --strict"));
     for runtime in [
         "RUN rustup",
@@ -52,5 +52,5 @@ fn candidate_executor_metadata_matches_the_backend_contract() {
     )));
     assert!(dockerfile.contains("COPY --chmod=0755 ayni /usr/local/bin/ayni"));
     assert!(dockerfile.contains("COPY LICENSE /usr/share/doc/ayni/"));
-    assert!(dockerfile.contains("ENTRYPOINT [\"ayni\"]"));
+    assert!(dockerfile.contains("CMD [\"/bin/sh\"]"));
 }
