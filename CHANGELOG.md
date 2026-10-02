@@ -1,13 +1,20 @@
 # Changelog
 
-## [0.14.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.13.0...ayni-v0.14.0) (2026-10-01)
+## [0.14.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.13.0...ayni-v0.14.0) (2026-10-02)
 
 
 ### Features
 
 * **env:** certify assembled environment images ([#44](https://github.com/ayni-oss/ayni/issues/44)) ([9450bba](https://github.com/ayni-oss/ayni/commit/9450bbaefa3db8335db40b61bc48d2cac6506842))
+* **env:** complete portable certified environment execution ([#46](https://github.com/ayni-oss/ayni/issues/46)) ([962acb9](https://github.com/ayni-oss/ayni/commit/962acb904b895b5b21ef68e10bc3dd2b623f1613))
 * **env:** define portable environment certificates ([#38](https://github.com/ayni-oss/ayni/issues/38)) ([5a7093c](https://github.com/ayni-oss/ayni/commit/5a7093c6040d037f888f6bb5072eaa362ff9f071))
 * **env:** discover prebuilt runtime environments ([#42](https://github.com/ayni-oss/ayni/issues/42)) ([31a3e54](https://github.com/ayni-oss/ayni/commit/31a3e546cfc06af7c83862ddee9849781618f8bd))
+* **runtime:** simplify checks and environment images ([#48](https://github.com/ayni-oss/ayni/issues/48)) ([5e24d5f](https://github.com/ayni-oss/ayni/commit/5e24d5fcc6c27ae5e1b307e8a8779b67f6809c3e))
+
+
+### Bug Fixes
+
+* **release:** refresh Ayni lock in release PRs ([#50](https://github.com/ayni-oss/ayni/issues/50)) ([551b0f0](https://github.com/ayni-oss/ayni/commit/551b0f008a98d3928be443f79c82f2b01bff52f9))
 
 ## [0.13.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.12.0...ayni-v0.13.0) (2026-09-23)
 
