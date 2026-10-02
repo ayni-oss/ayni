@@ -37,15 +37,15 @@ def main() -> int:
         release = job_block(source, "release")
         sync_lock = job_block(source, "sync-release-lock")
         caller = job_block(source, "publication")
+        completion = job_block(source, "release-completion")
         build = job_block(publication, "build")
         publish = job_block(publication, "publish")
+        executor = job_block(publication, "executor")
+        executor_manifest = job_block(publication, "executor-manifest")
     except ValueError as error:
         print(error, file=sys.stderr)
         return 1
 
-    for removed_job in ("release-completion",):
-        require(errors, f"  {removed_job}:\n" not in source,
-                f"release workflow must not retain {removed_job}")
     for removed_job in (
         "environment-image", "environment-manifest", "release-assets",
         "release-smoke", "environment-image-smoke", "fixture-plan",
@@ -86,6 +86,15 @@ def main() -> int:
             and "cancel-in-progress: false" in caller,
             "publication must be serialized and gated on normalized metadata")
     require(errors,
+            "packages: write" in caller
+            and "needs: [release, publication]" in completion
+            and "if: ${{ always() }}" in completion
+            and 'test "$PUBLICATION_RESULT" = "success"' in completion
+            and "release_artifacts.py verify --tag" in completion
+            and 'docker buildx imagetools inspect "$EXECUTOR_IMAGE"' in completion
+            and 'docker pull --platform linux/amd64 "$EXECUTOR_IMAGE"' in completion,
+            "release completion must fail closed unless public assets and executor validate")
+    require(errors,
             "aarch64-apple-darwin" in build
             and "x86_64-apple-darwin" in build
             and "x86_64-unknown-linux-gnu" in build
@@ -104,6 +113,21 @@ def main() -> int:
             and 'release_artifacts.py upload --tag "$TAG" --expected-source "$EXPECTED_COMMIT"' in publish,
             "publication must use a fresh app token and source-bound overwrite helper")
     require(errors,
+            "packages: write" in executor
+            and "ubuntu-24.04-arm" in executor
+            and "x86_64-unknown-linux-gnu" in executor
+            and "aarch64-unknown-linux-gnu" in executor
+            and "ayni-env:${{ inputs.version }}-debian-${{ matrix.suffix }}" in executor
+            and "ayni-candidate.Dockerfile" in executor
+            and 'docker push "$IMAGE"' in executor
+            and "docker buildx imagetools create" in executor_manifest
+            and "ayni-env:${{ inputs.version }}-debian" in executor_manifest
+            and "linux/amd64" in executor_manifest
+            and "linux/arm64" in executor_manifest
+            and 'docker logout ghcr.io || true' in executor_manifest
+            and 'echo "executor_image=$IMAGE@$digest"' in executor_manifest,
+            "release publication must publish and validate a public immutable multi-architecture executor")
+    require(errors,
             "tags:\n      - 'ayni-v*'" in docs
             and "branches:" not in docs
             and "cargo doc-cli > docs/cli.md" in docs
@@ -119,7 +143,7 @@ def main() -> int:
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print("release workflow builds and attests binaries before source-bound publication")
+    print("release workflow publishes source-bound binaries and a multi-architecture executor")
     return 0
 
 
