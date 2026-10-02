@@ -94,7 +94,9 @@ The plan explains missing or unsupported runtime inputs before anything is locke
 Provide both `AYNI_ENV_CERTIFICATE_SIGNING_KEY` and
 `AYNI_ENV_CERTIFICATE_KEY_ID` to sign an image with a repository-pinned key.
 Provide neither for an unsigned image whose metadata still verifies its local
-lock and protected content.
+lock and protected content. The signing value is a lowercase hexadecimal
+Ed25519 seed, not a PEM file; see [Signing an environment image](/product/environments#signing-an-environment-image)
+for generation, key pinning, and CI setup.
 
 ```sh
 ayni env lock
