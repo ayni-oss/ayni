@@ -182,11 +182,7 @@ fn materialize_findings_or_persist_failure(
     registry: &AdapterRegistry,
     artifact: &mut RunArtifact,
 ) -> Result<(), AnalyzeError> {
-    let result = verification_command::materialize_finding_commands(
-        artifact,
-        registry,
-        !managed_execution_active(),
-    );
+    let result = verification_command::materialize_finding_commands(artifact, registry);
     if let Err(error) = result {
         persist_incomplete_execution_artifact(
             workspace_root,
@@ -330,9 +326,6 @@ fn persist_incomplete_execution_artifact(
 }
 
 fn ensure_analyze_directories(workspace_root: &Path) -> Result<(), String> {
-    if crate::prebuilt_runtime::active() {
-        return Ok(());
-    }
     fs::create_dir_all(workspace_root.join(ARTIFACTS_DIR)).map_err(|error| error.to_string())?;
     Ok(())
 }

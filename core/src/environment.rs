@@ -15,7 +15,7 @@ use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
 /// Version of the clean-slate, explainable environment-plan document.
-pub const ENVIRONMENT_PLAN_SCHEMA_VERSION: &str = "0.4.0";
+pub const ENVIRONMENT_PLAN_SCHEMA_VERSION: &str = "0.5.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RepositoryIdentity {

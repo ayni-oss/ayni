@@ -1,5 +1,5 @@
 use crate::BackendError;
-use crate::runtime::{WORKSPACE, target_environment};
+use crate::runtime::target_environment;
 use ayni_core::{
     DependencyPreparationPlan, EnvironmentLock, PreparationOutput, PreparationOutputMode,
     sha256_fingerprint, sha256_hex,
@@ -11,7 +11,50 @@ use std::path::{Path, PathBuf};
 pub(crate) const INPUT_ROOT: &str = "/tmp/ayni/repository";
 pub(crate) const SEED_ROOT: &str = "/opt/ayni/dependencies";
 pub(crate) const CACHE_SEED_ROOT: &str = "/opt/ayni/cache-seed";
-const PREPARATION_IMPLEMENTATION_VERSION: &str = "10";
+const PREPARATION_IMPLEMENTATION_VERSION: &str = "11";
+
+// Package-manager caches can contain absolute links into their build-time home.
+// Keep internal links relocatable when the seed is copied into a disposable cache.
+const CACHE_LINK_SCRIPT: &str = r#"
+source=$1
+seed=$2
+shift 2
+for link do
+    target=$(/usr/bin/readlink -- "$link")
+    case "$target" in
+        /*)
+            target=$(/usr/bin/realpath -ms -- "$target")
+            case "$target" in
+                "$source"|"$source"/*)
+                    target="$seed${target#"$source"}"
+                    relative=$(/usr/bin/realpath -ms --relative-to="${link%/*}" -- "$target")
+                    /bin/ln -snf -- "$relative" "$link"
+                    ;;
+            esac
+            ;;
+    esac
+done
+"#;
+
+fn cache_link_command<'a>(source: &'a str, seed: &'a str) -> Vec<&'a str> {
+    vec![
+        "/usr/bin/find",
+        seed,
+        "-type",
+        "l",
+        "-exec",
+        "/bin/sh",
+        "-eu",
+        "-c",
+        CACHE_LINK_SCRIPT,
+        "ayni-cache-links",
+        source,
+        seed,
+        "{}",
+        "+",
+    ]
+}
+
 fn prepared_cache_copy(stage: &str) -> String {
     format!("COPY --from={stage} --chown=10001:10001 /home/ayni/.cache {CACHE_SEED_ROOT}\n")
 }
@@ -60,6 +103,9 @@ pub(crate) fn dockerfile_fragment(
             }
         }
     }
+    let relocate = serde_json::to_string(&cache_link_command("/home/ayni/.cache", CACHE_SEED_ROOT))
+        .expect("static cache relocation command");
+    output.push_str(&format!("RUN {relocate}\n"));
     Ok(output)
 }
 
@@ -193,48 +239,6 @@ fn create_parent(path: &Path, description: &str) -> Result<(), BackendError> {
     })
 }
 
-pub(crate) fn managed_environments(
-    lock: &EnvironmentLock,
-    plans: &[DependencyPreparationPlan],
-    state_home: &str,
-) -> Result<String, BackendError> {
-    let mut environments = BTreeMap::<String, BTreeMap<String, String>>::new();
-    for plan in ordered_plans(plans) {
-        let target = lock
-            .targets()
-            .iter()
-            .find(|target| target.target == plan.target)
-            .ok_or_else(|| BackendError::environment("preparation target is absent from lock"))?;
-        let mut environment = target_environment(target)?
-            .into_iter()
-            .collect::<BTreeMap<_, _>>();
-        environment.extend(resolved_execution_environment(plan, state_home));
-        environments.insert(target_key(&plan.target), environment);
-    }
-    serde_json::to_string(&environments).map_err(|error| {
-        BackendError::execution(format!(
-            "failed to serialize managed target environments: {error}"
-        ))
-    })
-}
-
-pub(crate) fn resolved_execution_environment(
-    plan: &DependencyPreparationPlan,
-    state_home: &str,
-) -> BTreeMap<String, String> {
-    let target_hash = sha256_hex(target_key(&plan.target));
-    plan.execution_environment
-        .iter()
-        .map(|(name, value)| {
-            let value = value.strip_prefix("@generated/").map_or_else(
-                || value.clone(),
-                |relative| format!("{state_home}/targets/{target_hash}/{relative}"),
-            );
-            (name.clone(), value)
-        })
-        .collect()
-}
-
 pub(crate) fn preparation_digest(
     plans: &[DependencyPreparationPlan],
 ) -> Result<String, BackendError> {
@@ -258,10 +262,6 @@ pub(crate) fn unique_outputs(plans: &[DependencyPreparationPlan]) -> Vec<Prepara
 
 pub(crate) fn output_key(output: &PreparationOutput) -> String {
     sha256_hex(format!("{}\0{}", output.path, output.mount_path))
-}
-
-pub(crate) fn target_key(target: &ayni_core::TargetIdentity) -> String {
-    format!("{}:{}", target.language, target.root)
 }
 
 fn ordered_plans(plans: &[DependencyPreparationPlan]) -> Vec<&DependencyPreparationPlan> {
@@ -289,7 +289,7 @@ fn preparation_run_instruction(
     let mut argv = vec![
         String::from("/bin/sh"),
         String::from("-c"),
-        String::from("cd \"$1\" && shift && exec \"$@\""),
+        String::from("cd \"$1\" && shift && exec env \"$@\""),
         String::from("ayni-preparation"),
         docker_path(INPUT_ROOT, &command.cwd),
         String::from("env"),
@@ -305,7 +305,16 @@ fn preparation_run_instruction(
             .iter()
             .map(|(name, value)| format!("{name}={value}")),
     );
-    argv.push(command.program.clone());
+    argv.extend([
+        String::from("/bin/sh"),
+        String::from("-eu"),
+        String::from("-c"),
+        String::from(
+            "environment=\"$(/usr/local/bin/mise -C /etc/ayni env -s bash)\"; eval \"$environment\"; exec \"$@\"",
+        ),
+        String::from("ayni-preparation-activate"),
+        command.program.clone(),
+    ]);
     argv.extend(command.args.clone());
     format!(
         "RUN {}",
@@ -337,14 +346,6 @@ fn contained_file(repo_root: &Path, relative: &str) -> Result<PathBuf, BackendEr
         Err(BackendError::environment(format!(
             "dependency input escapes the repository or is not a file: {relative}"
         )))
-    }
-}
-
-pub(crate) fn workspace_mount(output: &PreparationOutput) -> String {
-    if output.mount_path == "." {
-        WORKSPACE.to_owned()
-    } else {
-        format!("{WORKSPACE}/{}", output.mount_path)
     }
 }
 
@@ -405,6 +406,51 @@ mod tests {
         assert!(!fragment.contains("USER root"));
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cache_links_survive_relocation_without_rewriting_external_targets() {
+        use std::os::unix::fs::symlink;
+        let temporary = tempfile::tempdir().unwrap();
+        let seed = temporary.path().join("seed with spaces");
+        let wheels = seed.join("wheels/package");
+        fs::create_dir_all(&wheels).unwrap();
+        fs::create_dir_all(seed.join("archive/wheel")).unwrap();
+        fs::write(seed.join("archive/wheel/data"), "cached wheel").unwrap();
+        symlink("/home/ayni/.cache/archive/wheel", wheels.join("absolute")).unwrap();
+        symlink("../../archive/wheel", wheels.join("relative")).unwrap();
+        symlink("/home/ayni/.cache-other/wheel", wheels.join("external")).unwrap();
+
+        let command = cache_link_command("/home/ayni/.cache", seed.to_str().unwrap());
+        assert!(
+            std::process::Command::new(command[0])
+                .args(&command[1..])
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert_eq!(
+            fs::read_link(wheels.join("absolute")).unwrap(),
+            Path::new("../../archive/wheel")
+        );
+        assert_eq!(
+            fs::read_link(wheels.join("relative")).unwrap(),
+            Path::new("../../archive/wheel")
+        );
+        assert_eq!(
+            fs::read_link(wheels.join("external")).unwrap(),
+            Path::new("/home/ayni/.cache-other/wheel")
+        );
+        let relocated = temporary.path().join("runtime cache");
+        fs::rename(seed, &relocated).unwrap();
+        for link in ["absolute", "relative"] {
+            assert_eq!(
+                fs::read_to_string(relocated.join("wheels/package").join(link).join("data"))
+                    .unwrap(),
+                "cached wheel"
+            );
+        }
+    }
+
     #[test]
     fn preparation_run_encodes_repository_paths_as_json_data() {
         let cwd = "packages/space dir/\tcontrol\r\nRUN touch /tmp/injected";
@@ -423,9 +469,21 @@ mod tests {
         )
         .expect("JSON-form RUN");
         assert_eq!(argv[0], "/bin/sh");
-        assert_eq!(argv[2], "cd \"$1\" && shift && exec \"$@\"");
+        assert_eq!(argv[2], "cd \"$1\" && shift && exec env \"$@\"");
         assert_eq!(argv[4], docker_path(INPUT_ROOT, cwd));
-        assert_eq!(&argv[5..], ["env", "cargo", "fetch"]);
+        assert_eq!(
+            &argv[5..],
+            [
+                "env",
+                "/bin/sh",
+                "-eu",
+                "-c",
+                "environment=\"$(/usr/local/bin/mise -C /etc/ayni env -s bash)\"; eval \"$environment\"; exec \"$@\"",
+                "ayni-preparation-activate",
+                "cargo",
+                "fetch",
+            ]
+        );
     }
 
     #[test]

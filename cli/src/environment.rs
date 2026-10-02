@@ -1,10 +1,10 @@
 use crate::application::{EnvShowOperation, OutputFormat};
 use ayni_adapters_common::environment::environment_discovery_request;
 use ayni_core::{
-    AdapterRegistry, Architecture, AyniPolicy, DebianPackageRequirement, DockerAccess,
-    EnvironmentConflict, EnvironmentPlan, Libc, MiseToolRequirement, OperatingSystem,
-    RepositoryIdentity, RequirementConfidence, RequirementSource, TargetIdentity, TargetPlatform,
-    VersionRequirement, sha256_hex,
+    AdapterRegistry, Architecture, AyniPolicy, DebianPackageRequirement, EnvironmentConflict,
+    EnvironmentPlan, Libc, MiseToolRequirement, OperatingSystem, RepositoryIdentity,
+    RequirementConfidence, RequirementSource, TargetIdentity, TargetPlatform, VersionRequirement,
+    sha256_hex,
 };
 use std::collections::BTreeSet;
 use std::fmt::Write;
@@ -55,8 +55,6 @@ pub(crate) fn build_plan(
     )
     .and_then(|plan| plan.with_tools(tools))
     .and_then(|plan| plan.with_debian_packages(debian_packages))
-    .and_then(|plan| plan.with_capabilities(policy.environment_capabilities()))
-    .and_then(|plan| plan.with_resource_limits(policy.environment_resource_limits()))
     .map_err(|error| {
         ShowError::environment(format!(
             "failed to aggregate environment plan from {}: {error}",
@@ -159,27 +157,16 @@ fn repository_debian_packages(
         .map_err(|_| ShowError::input("environment contract escapes repository root"))?
         .to_string_lossy()
         .replace('\\', "/");
-    let configured = policy.environment_debian_packages();
-    let requested =
-        ayni_environment::resolve_debian_packages(configured, policy.environment_capabilities());
-    requested
-        .into_iter()
+    policy
+        .environment_debian_packages()
+        .iter()
         .map(|package| {
-            let declared = configured.contains(&package);
             Ok(DebianPackageRequirement {
                 package: package.clone(),
                 source: RequirementSource::new(
-                    if declared {
-                        "environment_debian_package"
-                    } else {
-                        "environment_capability"
-                    },
+                    "environment_debian_package",
                     &path,
-                    Some(if declared {
-                        format!("environment.debian.packages:{package}")
-                    } else {
-                        format!("environment.capabilities:{package}")
-                    }),
+                    Some(format!("environment.debian.packages:{package}")),
                     RequirementConfidence::Declared,
                 )
                 .map_err(|error| ShowError::input(error.to_string()))?,
@@ -419,7 +406,6 @@ fn print_human(plan: &EnvironmentPlan) {
     render_platforms(&mut output, plan);
     render_repository_tools(&mut output, plan);
     render_debian_packages(&mut output, plan);
-    render_capabilities(&mut output, plan);
     render_targets(&mut output, plan);
     render_diagnostics(&mut output, plan);
     print!("{output}");
@@ -460,34 +446,6 @@ fn render_debian_packages(output: &mut String, plan: &EnvironmentPlan) {
     for package in plan.debian_packages() {
         writeln!(output, "  - {}", package.package).expect("string write");
     }
-}
-
-fn render_capabilities(output: &mut String, plan: &EnvironmentPlan) {
-    let capabilities = plan.capabilities();
-    writeln!(
-        output,
-        "runtime capabilities: docker={:?} network={:?}",
-        capabilities.docker, capabilities.network
-    )
-    .expect("string write");
-    if capabilities.docker == DockerAccess::Socket {
-        writeln!(
-            output,
-            "  warning: Docker socket access grants the environment control over the host Docker daemon"
-        )
-        .expect("string write");
-    }
-    let resources = plan.resource_limits();
-    writeln!(
-        output,
-        "runtime resources: cpus={} memory={}MiB memory+swap={}MiB pids={} nofile={}",
-        resources.cpus,
-        resources.memory_mib,
-        resources.memory_swap_mib,
-        resources.pids,
-        resources.nofile,
-    )
-    .expect("string write");
 }
 
 fn render_targets(output: &mut String, plan: &EnvironmentPlan) {
@@ -650,7 +608,7 @@ mod tests {
     #[test]
     fn aggregates_mixed_targets_deterministically_without_writes() {
         let temp = TempDir::new().unwrap();
-        fs::write(temp.path().join(".ayni.toml"), "[checks]\ntest = true\n[languages]\nenabled = [\"node\", \"rust\"]\n[rust]\nroots = [\"rust\"]\n[node]\nroots = [\"node\"]\n[environment.tools]\nprotoc = \"35.1\"\n[environment.debian]\npackages = [\"libssl-dev\"]\n[environment.docker]\naccess = \"socket\"\nnetwork = \"bridge\"\n").unwrap();
+        fs::write(temp.path().join(".ayni.toml"), "[checks]\ntest = true\n[languages]\nenabled = [\"node\", \"rust\"]\n[rust]\nroots = [\"rust\"]\n[node]\nroots = [\"node\"]\n[environment.tools]\nprotoc = \"35.1\"\n[environment.debian]\npackages = [\"libssl-dev\"]\n").unwrap();
         fs::create_dir(temp.path().join("rust")).unwrap();
         fs::write(
             temp.path().join("rust/Cargo.toml"),
@@ -681,10 +639,8 @@ mod tests {
                 .iter()
                 .map(|package| package.package.as_str())
                 .collect::<Vec<_>>(),
-            ["docker.io", "libssl-dev"]
+            ["libssl-dev"]
         );
-        assert_eq!(one.capabilities().docker, DockerAccess::Socket);
-        assert_eq!(one.capabilities().network, ayni_core::NetworkAccess::Bridge);
         assert!(!temp.path().join(".ayni").exists());
     }
 

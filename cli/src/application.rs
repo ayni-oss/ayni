@@ -8,18 +8,6 @@ pub(crate) enum OutputFormat {
     Markdown,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionMode {
-    Managed,
-    Host,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CapabilityAuthorization {
-    pub allow_network: bool,
-    pub allow_docker_socket: bool,
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Operation {
     Init(InitOperation),
@@ -29,8 +17,6 @@ pub(crate) enum Operation {
     EnvBuild(EnvBuildOperation),
     EnvStorage(EnvStorageOperation),
     EnvPrune(EnvPruneOperation),
-    EnvShell(EnvShellOperation),
-    EnvRun(EnvRunOperation),
     ContractShow(ContractOperation),
     ToolsReconcile(ToolsReconcileOperation),
     Verify(VerifyOperation),
@@ -84,23 +70,6 @@ pub(crate) struct EnvPruneOperation {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct EnvShellOperation {
-    pub repo_root: PathBuf,
-    pub language: Option<Language>,
-    pub root: Option<String>,
-    pub authorization: CapabilityAuthorization,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct EnvRunOperation {
-    pub repo_root: PathBuf,
-    pub language: Option<Language>,
-    pub root: Option<String>,
-    pub command: Vec<String>,
-    pub authorization: CapabilityAuthorization,
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ContractOperation {
     pub config: PathBuf,
     pub output: OutputFormat,
@@ -110,9 +79,7 @@ pub(crate) struct ContractOperation {
 pub(crate) struct CheckOperation {
     pub config: PathBuf,
     pub output: OutputFormat,
-    pub execution_mode: ExecutionMode,
     pub debug: bool,
-    pub authorization: CapabilityAuthorization,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -130,9 +97,7 @@ pub(crate) struct VerifyOperation {
     pub package: Option<String>,
     pub name: Option<String>,
     pub output: OutputFormat,
-    pub execution_mode: ExecutionMode,
     pub debug: bool,
-    pub authorization: CapabilityAuthorization,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -140,13 +105,7 @@ pub(crate) struct ImpactOperation {
     pub config: PathBuf,
     pub base: String,
     pub output: OutputFormat,
-    pub execution_mode: ExecutionMode,
     pub debug: bool,
-    pub authorization: CapabilityAuthorization,
-    /// Internal immutable host-produced impact plan for managed execution.
-    pub managed_handoff: Option<PathBuf>,
-    /// Internal provisional artifact path promoted by the managed outer process.
-    pub managed_result: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -168,6 +127,7 @@ pub(crate) struct ToolsReconcileOperation {
 pub(crate) struct EnvBuildOperation {
     pub repo_root: PathBuf,
     pub executor_image: Option<String>,
+    pub tag: Option<String>,
     pub cache_from: Vec<String>,
     pub cache_to: Vec<String>,
 }

@@ -2,14 +2,10 @@ use super::*;
 use ayni_adapters_common::workspace::{
     git_workspace_entries, has_git_ancestor, is_universal_workspace_state,
 };
-use ayni_core::{PrebuiltRuntimeIdentity, lower_hex, sha256_fingerprint};
+use ayni_core::{lower_hex, sha256_fingerprint};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::time::Duration;
-
-const MANAGED_LOCK_FINGERPRINT: &str = "AYNI_MANAGED_LOCK_FINGERPRINT";
-const MANAGED_TOOL_VERSIONS: &str = "AYNI_MANAGED_TOOL_VERSIONS";
-const MANAGED_WORKSPACE_ROOT: &str = "AYNI_MANAGED_WORKSPACE_ROOT";
 
 pub(crate) const SIGNALS_ARTIFACT: &str = ".ayni/last/signals.json";
 pub(crate) const VERIFY_SIGNALS_ARTIFACT: &str = ".ayni/verify/last/signals.json";
@@ -46,9 +42,11 @@ pub(crate) fn build_artifact_metadata_for_command(
         .targets
         .first()
         .map(|target| target.run_context.scope.clone());
-    let prebuilt_runtime = prebuilt_runtime_identity()?;
-    let managed = managed_execution_active() || prebuilt_runtime.is_some();
-    let mut tool_versions = managed_tool_versions(managed, prebuilt_runtime.is_some())?;
+    let runtime = crate::prebuilt_runtime::current();
+    let prebuilt_runtime = runtime.as_ref().map(|context| context.runtime.clone());
+    let mut tool_versions = runtime
+        .as_ref()
+        .map_or_else(Vec::new, |context| context.tool_versions.clone());
     tool_versions.sort();
     tool_versions.dedup();
 
@@ -66,53 +64,19 @@ pub(crate) fn build_artifact_metadata_for_command(
         },
         config_path: config_path.to_string_lossy().into_owned(),
         repository_root: workspace_root.to_string_lossy().into_owned(),
-        execution_mode: if managed {
+        execution_mode: if runtime.is_some() {
             ExecutionMode::Managed
         } else {
             ExecutionMode::Host
         },
         contract_digest: file_fingerprint(config_path)?,
-        environment_lock_fingerprint: runtime_lock_fingerprint(&prebuilt_runtime, managed)?,
+        environment_lock_fingerprint: runtime
+            .as_ref()
+            .map(|context| context.lock_fingerprint.clone()),
         prebuilt_runtime,
         source_fingerprint: source_fingerprint(workspace_root)?,
         tool_versions,
     })
-}
-
-fn managed_tool_versions(
-    managed: bool,
-    prebuilt: bool,
-) -> Result<Vec<ArtifactToolVersion>, String> {
-    if !managed || prebuilt {
-        return Ok(Vec::new());
-    }
-    let value = std::env::var(MANAGED_TOOL_VERSIONS)
-        .map_err(|_| String::from("managed execution is missing tool-version provenance"))?;
-    serde_json::from_str(&value)
-        .map_err(|error| format!("managed tool-version provenance is invalid: {error}"))
-}
-
-fn runtime_lock_fingerprint(
-    prebuilt_runtime: &Option<PrebuiltRuntimeIdentity>,
-    managed: bool,
-) -> Result<Option<String>, String> {
-    match prebuilt_runtime {
-        Some(runtime) => Ok(Some(
-            runtime.certificate.certificate.lock_fingerprint.clone(),
-        )),
-        None if managed => std::env::var(MANAGED_LOCK_FINGERPRINT)
-            .map(Some)
-            .map_err(|_| String::from("managed execution is missing lock provenance")),
-        None => Ok(None),
-    }
-}
-
-fn prebuilt_runtime_identity() -> Result<Option<PrebuiltRuntimeIdentity>, String> {
-    Ok(crate::prebuilt_runtime::active_identity())
-}
-
-fn prebuilt_runtime_active() -> bool {
-    crate::prebuilt_runtime::active()
 }
 
 fn file_fingerprint(path: &Path) -> Result<String, String> {
@@ -122,9 +86,7 @@ fn file_fingerprint(path: &Path) -> Result<String, String> {
 }
 
 pub(crate) fn source_fingerprint(root: &Path) -> Result<String, String> {
-    let files = if let Some(files) = managed_workspace_manifest_entries(root)? {
-        files
-    } else if has_git_ancestor(root) {
+    let files = if has_git_ancestor(root) {
         collect_git_source_entries(root)?
     } else {
         let mut files = Vec::new();
@@ -134,6 +96,7 @@ pub(crate) fn source_fingerprint(root: &Path) -> Result<String, String> {
     fingerprint_source_entries(root, files)
 }
 
+#[allow(dead_code)]
 pub(crate) fn source_fingerprint_excluding(
     root: &Path,
     excluded_outputs: &[String],
@@ -206,58 +169,6 @@ fn fingerprint_source_entries(root: &Path, mut files: Vec<PathBuf>) -> Result<St
         }
     }
     Ok(format!("sha256:{}", lower_hex(hasher.finalize())))
-}
-
-fn managed_workspace_manifest_entries(root: &Path) -> Result<Option<Vec<PathBuf>>, String> {
-    if std::env::var_os(MANAGED_LOCK_FINGERPRINT).is_none() {
-        return Ok(None);
-    }
-    let Some(path) = std::env::var_os("AYNI_MANAGED_WORKSPACE_MANIFEST") else {
-        return Ok(None);
-    };
-    let managed_root = std::env::var_os(MANAGED_WORKSPACE_ROOT)
-        .ok_or_else(|| String::from("managed execution is missing workspace-root provenance"))?;
-    let managed_root = PathBuf::from(managed_root);
-    let managed_root = managed_root.canonicalize().map_err(|error| {
-        format!(
-            "failed to resolve managed workspace root {}: {error}",
-            managed_root.display()
-        )
-    })?;
-    let root = root
-        .canonicalize()
-        .map_err(|error| format!("failed to resolve source root {}: {error}", root.display()))?;
-    if root != managed_root {
-        return Ok(None);
-    }
-    let bytes = fs::read(&path).map_err(|error| {
-        format!(
-            "failed to read managed workspace manifest {}: {error}",
-            Path::new(&path).display()
-        )
-    })?;
-    let mut files = Vec::new();
-    for raw in bytes
-        .split(|byte| *byte == 0)
-        .filter(|entry| !entry.is_empty())
-    {
-        let relative = std::str::from_utf8(raw)
-            .map_err(|_| String::from("managed workspace manifest requires UTF-8 paths"))?;
-        let path = PathBuf::from(relative);
-        if path.is_absolute()
-            || path
-                .components()
-                .any(|component| !matches!(component, std::path::Component::Normal(_)))
-        {
-            return Err(String::from(
-                "managed workspace manifest contains a non-normalized path",
-            ));
-        }
-        files.push(path);
-    }
-    files.sort();
-    files.dedup();
-    Ok(Some(files))
 }
 
 fn collect_git_source_entries(root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -369,25 +280,7 @@ pub(crate) fn serialize_artifact(artifact: &RunArtifact) -> Result<String, Strin
 /// contract validation fails before target planning. Absence is safer than a
 /// prior successful artifact whose contract digest no longer matches.
 pub(crate) fn invalidate_artifact_at(repo_root: &Path, relative_path: &str) -> Result<(), String> {
-    if prebuilt_runtime_active() {
-        return Ok(());
-    }
     let destination = repo_root.join(relative_path);
-    if matches!(
-        destination.file_name().and_then(|name| name.to_str()),
-        Some("signals.json" | "impact.json")
-    ) {
-        let sidecar = destination.with_file_name("execution.json");
-        match fs::remove_file(sidecar) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "failed to invalidate execution provenance: {error}"
-                ));
-            }
-        }
-    }
     match fs::remove_file(&destination) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -402,9 +295,6 @@ pub(crate) fn persist_artifact_at(
     relative_path: &str,
     serialized: &str,
 ) -> Result<(), String> {
-    if prebuilt_runtime_active() {
-        return Ok(());
-    }
     let destination = repo_root.join(relative_path);
     let parent = destination
         .parent()

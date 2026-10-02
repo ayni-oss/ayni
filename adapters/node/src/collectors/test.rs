@@ -1,4 +1,4 @@
-use super::util::{command_failure_from_output, run_tool, tool_command};
+use super::util::{command_failure_from_output, tool_command};
 use ayni_adapters_common::collector::{CollectorError, CollectorResult};
 use ayni_adapters_common::exec::{
     format_command, run_command_for_context_streaming_structured,
@@ -12,31 +12,14 @@ use ayni_core::{
 use serde_json::Value as JsonValue;
 
 pub fn collect(context: &RunContext) -> CollectorResult {
-    let (output, runner) = if let Some((program, args, runner)) = test_override_command(context) {
-        (
-            run_command_for_context_structured(context, &program, &args)?,
-            runner,
-        )
-    } else {
-        let (program, args) = tool_command(
-            context,
-            "vitest",
-            &["run", "--reporter=json", "--passWithNoTests"],
-        );
-        let runner = format_command(&program, &args);
-        (
-            run_tool(
-                context,
-                "vitest",
-                &["run", "--reporter=json", "--passWithNoTests"],
-            )?,
-            runner,
-        )
-    };
+    prepare_report(context)?;
+    let (program, args, runner) =
+        test_override_command(context).unwrap_or_else(|| default_test_command(context));
+    let output = run_command_for_context_structured(context, &program, &args)?;
     let status_ok = output.status.success();
     let stdout_text = String::from_utf8_lossy(&output.stdout);
     let stderr_text = String::from_utf8_lossy(&output.stderr);
-    let mut summary = normalize_vitest_output(&stdout_text, &stderr_text);
+    let mut summary = normalize_vitest_output(context, &stdout_text, &stderr_text);
 
     if summary.report_missing && !status_ok {
         summary.offenders.push(TestFailure {
@@ -116,6 +99,7 @@ pub fn collect_selected(
         args.push(String::from("--testNamePattern"));
         args.push(name.clone());
     }
+    prepare_report(context)?;
     let runner = format_command(&program, &args);
     let output = run_command_for_context_streaming_structured(context, &program, &args, on_line)?;
     build_row_from_output(context, output, runner)
@@ -136,16 +120,24 @@ fn selected_file_argument(context: &RunContext, file: &str) -> String {
     format!("{}{file}", "../".repeat(parents))
 }
 
+fn default_test_command(context: &RunContext) -> (String, Vec<String>, String) {
+    let (program, args) = tool_command(
+        context,
+        "vitest",
+        &[
+            "run",
+            "--reporter=json",
+            "--passWithNoTests",
+            &report_argument(context),
+        ],
+    );
+    let runner = format_command(&program, &args);
+    (program, args, runner)
+}
+
 fn selected_test_command(context: &RunContext) -> Result<(String, Vec<String>), String> {
-    let (program, mut args, _) = test_override_command(context).unwrap_or_else(|| {
-        let (program, args) = tool_command(
-            context,
-            "vitest",
-            &["run", "--reporter=json", "--passWithNoTests"],
-        );
-        let runner = format_command(&program, &args);
-        (program, args, runner)
-    });
+    let (program, mut args, _) =
+        test_override_command(context).unwrap_or_else(|| default_test_command(context));
     if let Some(package) = &context.scope.package {
         match program.as_str() {
             "pnpm" | "bun" => args.splice(0..0, [String::from("--filter"), package.clone()]),
@@ -169,7 +161,7 @@ pub(super) fn build_row_from_output(
     let status_ok = output.status.success();
     let stdout_text = String::from_utf8_lossy(&output.stdout);
     let stderr_text = String::from_utf8_lossy(&output.stderr);
-    let mut summary = normalize_vitest_output(&stdout_text, &stderr_text);
+    let mut summary = normalize_vitest_output(context, &stdout_text, &stderr_text);
     if status_ok && !summary.report_missing && summary.total_tests == 0 {
         summary.offenders.push(zero_tests_failure());
     }
@@ -233,8 +225,38 @@ fn prefer_suite_failure_message(
     failure
 }
 
-fn normalize_vitest_output(stdout: &str, stderr: &str) -> VitestSummary {
-    let Some(report) = parse_vitest_report(stdout).or_else(|| parse_vitest_report(stderr)) else {
+fn report_path(context: &RunContext) -> std::path::PathBuf {
+    let path = context.workdir.join(".vitest/json/output.json");
+    std::path::absolute(&path).unwrap_or(path)
+}
+
+pub(super) fn report_argument(context: &RunContext) -> String {
+    format!("--outputFile={}", report_path(context).display())
+}
+
+/// Vitest 5 writes JSON to disk by default. Remove prior evidence before every
+/// invocation, including focused and coverage-backed tests.
+pub(super) fn prepare_report(context: &RunContext) -> Result<(), CollectorError> {
+    let path = report_path(context);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(CollectorError::Adapter(format!(
+            "failed to remove stale Vitest report {}: {error}",
+            path.display()
+        ))),
+    }
+}
+
+fn normalize_vitest_output(context: &RunContext, stdout: &str, stderr: &str) -> VitestSummary {
+    let report = parse_vitest_report(stdout)
+        .or_else(|| parse_vitest_report(stderr))
+        .or_else(|| {
+            std::fs::read_to_string(report_path(context))
+                .ok()
+                .and_then(|content| serde_json::from_str(&content).ok())
+        });
+    let Some(report) = report else {
         return missing_vitest_summary();
     };
     let Some((total_tests, passed, failed)) = valid_vitest_counts(&report) else {
@@ -304,6 +326,7 @@ fn test_override_command(context: &RunContext) -> Option<(String, Vec<String>, S
             String::from("run"),
             String::from("--reporter=json"),
             String::from("--passWithNoTests"),
+            report_argument(context),
         ]
     } else {
         override_cmd.args.clone()
@@ -423,6 +446,68 @@ mod tests {
             execution: ExecutionResolution::direct("npm", PathBuf::from("."), "test", 100),
             cancellation: Default::default(),
             debug: false,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_reports_require_fresh_valid_evidence_in_every_test_path() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut context = context_with_policy(
+            r#"
+[checks]
+test = true
+coverage = true
+[languages]
+enabled = ["node"]
+[node.tooling.test]
+command = "sh"
+args = ["runner.sh"]
+[node.tooling.coverage]
+command = "sh"
+args = ["runner.sh"]
+"#,
+        );
+        context.repo_root = temporary.path().into();
+        context.target_root = temporary.path().into();
+        context.workdir = temporary.path().into();
+        context.execution = ExecutionResolution::direct("sh", temporary.path().into(), "test", 100);
+        let script = temporary.path().join("runner.sh");
+        let fresh = r#"
+mkdir -p .vitest/json coverage
+printf '%s' '{"numTotalTests":8,"numPassedTests":8,"numFailedTests":0}' > .vitest/json/output.json
+printf '%s' '{"total":{"lines":{"pct":100},"branches":{"pct":100}}}' > coverage/coverage-summary.json
+echo 'JSON report written to .vitest/json/output.json'
+"#;
+        for mode in ["normal", "focused", "coverage"] {
+            let collect = || match mode {
+                "normal" => super::collect(&context).unwrap(),
+                "focused" => super::collect_selected(
+                    &context,
+                    &ayni_core::VerificationSelection::default(),
+                    &mut |_| {},
+                )
+                .unwrap(),
+                _ => {
+                    super::super::coverage::collect_with_test_lines(&context, |_| {})
+                        .unwrap()
+                        .0
+                }
+            };
+            std::fs::write(&script, fresh).unwrap();
+            let row = collect();
+            assert!(row.pass, "{mode}: fresh report must pass");
+            let SignalResult::Test(result) = row.result else {
+                panic!("test result");
+            };
+            assert_eq!((result.total_tests, result.passed), (8, 8));
+
+            // The previous successful report is still present, but the next
+            // successful command produces no evidence and must fail closed.
+            std::fs::write(&script, ":\n").unwrap();
+            assert!(!collect().pass, "{mode}: stale report must not pass");
+            std::fs::write(&script, "echo invalid > .vitest/json/output.json\n").unwrap();
+            assert!(!collect().pass, "{mode}: malformed report must not pass");
         }
     }
 

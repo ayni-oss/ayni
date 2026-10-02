@@ -1,8 +1,7 @@
 use crate::analysis::{
     AnalyzePlanning, OutputArg, VERIFY_SIGNALS_ARTIFACT, build_analyze_targets,
     build_artifact_metadata_for_command, emit_analyze_outputs, invalidate_artifact_at,
-    managed_execution_active, persist_artifact_at, serialize_artifact, signal_kind_slug,
-    workspace_root_from_config_path,
+    persist_artifact_at, serialize_artifact, signal_kind_slug, workspace_root_from_config_path,
 };
 use crate::policy::load_from_path;
 use crate::ui::cancellation::SignalCancellation;
@@ -157,11 +156,8 @@ fn persist_and_emit_verification(
     planning: &AnalyzePlanning,
     request: &Request,
 ) -> Result<RunOutcome, String> {
-    if let Err(error) = verification_command::materialize_finding_commands(
-        &mut artifact,
-        registry,
-        !managed_execution_active(),
-    ) {
+    if let Err(error) = verification_command::materialize_finding_commands(&mut artifact, registry)
+    {
         persist_incomplete_verification_artifact(
             workspace_root,
             planning,

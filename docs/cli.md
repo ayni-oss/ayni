@@ -17,8 +17,6 @@ This document contains the help content for the `ayni` command-line program.
 * [`ayni env build`↴](#ayni-env-build)
 * [`ayni env storage`↴](#ayni-env-storage)
 * [`ayni env prune`↴](#ayni-env-prune)
-* [`ayni env shell`↴](#ayni-env-shell)
-* [`ayni env run`↴](#ayni-env-run)
 * [`ayni tools`↴](#ayni-tools)
 * [`ayni tools reconcile`↴](#ayni-tools-reconcile)
 * [`ayni contract`↴](#ayni-contract)
@@ -90,8 +88,6 @@ Inspect and manage the repository code environment
 * `build` — Build the repository code-environment image from a current lock
 * `storage` — Report Ayni-managed OCI images and repository-local environment state
 * `prune` — Preview or remove stale repository state and explicitly selected images
-* `shell` — Enter the managed environment with the checkout mounted
-* `run` — Run an arbitrary command inside the managed environment
 
 
 
@@ -166,6 +162,7 @@ Build the repository code-environment image from a current lock
 
   Default value: `.`
 * `--executor-image <REFERENCE@sha256:DIGEST>` — Use this immutable executor image without changing the environment lock
+* `--tag <TAG>` — Local tag applied to the built image. This does not publish it
 * `--cache-from <CACHE>` — Import an external Buildx cache; repeat for multiple sources. Does not change the lock
 * `--cache-to <CACHE>` — Export an external Buildx cache; repeat for multiple destinations. Does not change the lock
 
@@ -223,52 +220,6 @@ Preview or remove stale repository state and explicitly selected images
 * `--current` — Include the current repository-local environment state.
 
    The next managed command recreates it from the locked image. Current images remain retained because they can be shared across repositories.
-
-
-
-## `ayni env shell`
-
-Enter the managed environment with the checkout mounted
-
-**Usage:** `ayni env shell [OPTIONS]`
-
-###### **Options:**
-
-* `--repo-root <REPO_ROOT>`
-
-  Default value: `.`
-* `--language <LANGUAGE>` — Activate one locked target instead of the composed repository environment; required with --root
-
-  Possible values: `rust`, `go`, `node`, `python`, `kotlin`
-
-* `--root <ROOT>` — Select one normalized locked root
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
-
-
-
-## `ayni env run`
-
-Run an arbitrary command inside the managed environment
-
-**Usage:** `ayni env run [OPTIONS] -- <COMMAND>...`
-
-###### **Arguments:**
-
-* `<COMMAND>`
-
-###### **Options:**
-
-* `--repo-root <REPO_ROOT>`
-
-  Default value: `.`
-* `--language <LANGUAGE>` — Activate one locked target instead of the composed repository environment; required with --root
-
-  Possible values: `rust`, `go`, `node`, `python`, `kotlin`
-
-* `--root <ROOT>` — Select one normalized locked root
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 
 
 
@@ -408,10 +359,7 @@ Run only the test signal
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 * `--file <FILE>`
 * `--package <PACKAGE>`
 * `--name <NAME>`
@@ -446,10 +394,7 @@ Run only the coverage signal
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 
 
 
@@ -481,10 +426,7 @@ Run only the size signal
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 * `--file <FILE>`
 
 
@@ -517,10 +459,7 @@ Run only the complexity signal
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 * `--file <FILE>`
 * `--package <PACKAGE>`
 
@@ -554,10 +493,7 @@ Run only the dependency signal
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 * `--file <FILE>`
 * `--package <PACKAGE>`
 
@@ -591,10 +527,7 @@ Run only the mutation signal
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 
 
 
@@ -662,10 +595,7 @@ Execute the quality work affected by a change
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 
 
 
@@ -692,10 +622,7 @@ Run the complete repository quality contract
   - `markdown`:
     Deterministic Markdown output
 
-* `--host` — Run on the host instead of in the managed environment
 * `--debug` — Print raw command diagnostics
-* `--allow-network` — Authorize bridge networking requested by the locked policy for this managed launch
-* `--allow-docker-socket` — Authorize host Docker-socket access requested by the locked policy for this managed launch
 
 
 

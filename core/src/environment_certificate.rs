@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Wire version for portable environment certificates.
-pub const ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION: &str = "1";
+pub const ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION: &str = "2";
 
 /// Claims made by a builder about protected, prebuilt environment content.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +77,16 @@ pub struct EnvironmentCertificateEnvelope {
 }
 
 impl EnvironmentCertificateEnvelope {
+    /// Creates metadata for a locally consistent image without asserting a
+    /// builder identity.
+    pub fn unsigned(certificate: EnvironmentCertificate) -> Result<Self, CertificateError> {
+        certificate.canonical_payload()?;
+        Ok(Self {
+            certificate,
+            key_id: String::from("unsigned"),
+            signature: String::new(),
+        })
+    }
     pub fn sign(
         certificate: EnvironmentCertificate,
         key_id: impl Into<String>,
@@ -97,6 +107,12 @@ impl EnvironmentCertificateEnvelope {
         &self,
         trust: &EnvironmentCertificateTrustPolicy,
     ) -> Result<(), CertificateError> {
+        if self.key_id == "unsigned" && self.signature.is_empty() {
+            return Ok(());
+        }
+        if self.key_id == "unsigned" || self.signature.is_empty() {
+            return Err(CertificateError::InvalidSignature);
+        }
         validate_key_id(&self.key_id)?;
         let public_key = trust
             .trusted_keys
@@ -133,6 +149,14 @@ impl EnvironmentCertificateTrustPolicy {
         crate::sha256_fingerprint(
             serde_json::to_vec(&self.trusted_keys).expect("trusted keys serialize"),
         )
+    }
+
+    /// Whether this exact public key is pinned under the supplied key identifier.
+    #[must_use]
+    pub fn trusts_key(&self, key_id: &str, public_key: &[u8; 32]) -> bool {
+        self.trusted_keys
+            .get(key_id)
+            .is_some_and(|value| value == &crate::lower_hex(public_key))
     }
 
     #[must_use]
@@ -273,9 +297,14 @@ mod tests {
         let envelope =
             EnvironmentCertificateEnvelope::sign(certificate(), "release-2026", &signing_key)
                 .unwrap();
-        envelope
-            .verify(&EnvironmentCertificateTrustPolicy::new(keys).unwrap())
-            .unwrap();
+        let trust = EnvironmentCertificateTrustPolicy::new(keys).unwrap();
+        assert!(trust.trusts_key("release-2026", &signing_key.verifying_key().to_bytes()));
+        assert!(!trust.trusts_key("other", &signing_key.verifying_key().to_bytes()));
+        assert!(!trust.trusts_key(
+            "release-2026",
+            &SigningKey::from_bytes(&[8; 32]).verifying_key().to_bytes()
+        ));
+        envelope.verify(&trust).unwrap();
     }
 
     #[test]

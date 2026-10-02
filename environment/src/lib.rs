@@ -3,16 +3,22 @@
 //! This layer consumes validated core lock contracts. Language adapters remain
 //! responsible for ecosystem semantics; the CLI owns user intent and rendering.
 
-use ayni_core::{DockerAccess, EnvironmentCapabilities};
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 use std::time::Duration;
 
 mod certificate;
+pub use certificate::validate_signing_trust;
+pub use certificate::{
+    MAX_CERTIFICATE_BYTES, MAX_CERTIFICATE_KEY_ID_BYTES, MAX_PROTECTED_MANIFEST_BYTES,
+    MAX_PROTECTED_MANIFEST_ENTRIES, PROTECTED_ANCESTOR_DIRS, PROTECTED_FILE_ROOTS,
+    PROTECTED_TREE_ROOTS, ProtectedManifestEntry, parse_protected_manifest,
+};
 mod executor;
 pub use executor::execution_build_record;
 mod image;
 mod lock;
+pub mod prebuilt;
 mod preparation;
 mod preparation_groups;
 mod runtime;
@@ -24,10 +30,9 @@ pub use lock::{
     resolve_provisioning_base,
 };
 pub use runtime::{
-    BuildCache, CapturedLaunch, Engine, LaunchAuthorization, ReadOnlyInput, TargetSelection, build,
-    build_prepared, build_prepared_with_cache, build_prepared_with_executor, detect_engine, doctor,
-    doctor_prepared, launch, launch_prepared, launch_repository, launch_repository_prepared,
-    launch_repository_prepared_with_inputs, launch_repository_prepared_with_inputs_captured,
+    BuildCache, Engine, build, build_prepared, build_prepared_with_cache,
+    build_prepared_with_executor, detect_engine, doctor, doctor_prepared, locked_tool_versions,
+    target_environment,
 };
 pub use storage::{
     StorageImage, StorageImageOwnership, StorageImagePruneScope, StoragePruneFailure,
@@ -54,32 +59,6 @@ pub(crate) fn run_oci_command_streaming_truncated(
     ayni_adapters_common::exec::run_command_streaming_truncated(
         workdir, program, args, timeout, on_line,
     )
-}
-
-pub(crate) fn oci_process(program: &str) -> Command {
-    let mut command = Command::new(program);
-    for name in certificate::SIGNING_ENVIRONMENT {
-        command.env_remove(name);
-    }
-    command
-}
-
-/// Merge backend packages required by declared execution capabilities into the
-/// repository's explicitly configured Debian packages.
-#[must_use]
-pub fn resolve_debian_packages(
-    configured: &[String],
-    capabilities: EnvironmentCapabilities,
-) -> Vec<String> {
-    let mut resolved = configured.to_vec();
-    if capabilities.docker == DockerAccess::Socket
-        && !resolved
-            .iter()
-            .any(|package| package == "docker.io" || package.starts_with("docker.io="))
-    {
-        resolved.push(String::from("docker.io"));
-    }
-    resolved
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,27 +111,5 @@ pub(crate) fn concise_output(bytes: &[u8]) -> String {
     } else {
         let value = lines.join("\n");
         value.chars().take(4000).collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::resolve_debian_packages;
-    use ayni_core::{DockerAccess, EnvironmentCapabilities, NetworkAccess};
-
-    #[test]
-    fn docker_socket_capability_owns_client_package_injection() {
-        let capabilities = EnvironmentCapabilities {
-            docker: DockerAccess::Socket,
-            network: NetworkAccess::None,
-        };
-        assert_eq!(
-            resolve_debian_packages(&[String::from("libssl-dev")], capabilities),
-            ["libssl-dev", "docker.io"]
-        );
-        assert_eq!(
-            resolve_debian_packages(&[String::from("docker.io=1.2.3")], capabilities),
-            ["docker.io=1.2.3"]
-        );
     }
 }

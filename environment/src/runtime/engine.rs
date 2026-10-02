@@ -12,7 +12,7 @@ use crate::{
     BackendError, concise_output, read_lock, run_oci_command, run_oci_command_streaming_truncated,
 };
 use ayni_adapters_common::exec::DEFAULT_TOOL_TIMEOUT;
-use ayni_core::{DependencyPreparationPlan, EnvironmentLock, Language};
+use ayni_core::{DependencyPreparationPlan, EnvironmentLock};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
@@ -21,15 +21,22 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+const IMAGE_ENTRYPOINT: &str = include_str!("entrypoint.sh");
 const FILE_INVENTORY_SCRIPT: &str = r#"
 set -eu
-for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
+for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/ayni-entrypoint /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
+done
+for root in @PROTECTED_ROOTS@; do
+    [ ! -e "$root" ] || {
+        unsupported=$(/usr/bin/find "$root" -xdev ! -type d ! -type f ! -type l -printf x -quit)
+        [ -z "$unsupported" ] || { echo "unsupported protected content below $root" >&2; exit 1; }
+    }
 done
 file_list=$(/usr/bin/mktemp /tmp/ayni-protected-files.XXXXXX)
 sorted_list=$(/usr/bin/mktemp /tmp/ayni-protected-files-sorted.XXXXXX)
 trap '/usr/bin/rm -f "$file_list" "$sorted_list"' 0 HUP INT TERM
-for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup; do
+for root in @PROTECTED_ROOTS@; do
     [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type f -print0 >> "$file_list"
 done
 LC_ALL=C /usr/bin/sort -z "$file_list" -o "$sorted_list"
@@ -37,24 +44,28 @@ LC_ALL=C /usr/bin/sort -z "$file_list" -o "$sorted_list"
 "#;
 const SYMLINK_INVENTORY_SCRIPT: &str = r#"
 set -eu
-for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
+for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/ayni-entrypoint /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
 done
-for root in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni /home/ayni/.rustup; do
+for root in @PROTECTED_ROOTS@; do
     [ ! -e "$root" ] || /usr/bin/find "$root" -xdev -type l -printf '%p\0%l\0'
 done
 "#;
+
+fn inventory_script(template: &str) -> String {
+    let roots = crate::certificate::PROTECTED_FILE_ROOTS
+        .iter()
+        .chain(crate::certificate::PROTECTED_TREE_ROOTS)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" ");
+    template.replace("@PROTECTED_ROOTS@", &roots)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Engine {
     Docker,
     Podman,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct TargetSelection {
-    pub language: Option<Language>,
-    pub root: Option<String>,
 }
 
 /// Operator-selected cache transport. Cache locations are never lock inputs.
@@ -154,106 +165,11 @@ pub fn doctor_prepared(
     let lock = read_lock(&root)?;
     let engine = detect_engine()?;
     let plan = current_image_plan(&root, engine, &lock, preparations)?;
-    super::validate_runtime_capabilities(engine, lock.capabilities())?;
-    let security = engine_security_posture(&root, engine);
-    let resources = lock.resource_limits();
-    let capabilities = lock.capabilities();
     Ok(format!(
-        "environment ready: {} ({})\nsecurity posture: {security}\nconfigured resource ceilings: cpus={} memory={}MiB memory+swap={}MiB pids={} nofile={}\nruntime capabilities: docker={:?} network={:?}",
+        "environment image is current: {} ({})",
         plan.tag,
         engine_name(engine),
-        resources.cpus,
-        resources.memory_mib,
-        resources.memory_swap_mib,
-        resources.pids,
-        resources.nofile,
-        capabilities.docker,
-        capabilities.network,
     ))
-}
-
-fn engine_security_posture(root: &Path, engine: Engine) -> String {
-    match engine {
-        Engine::Docker => docker_security_posture(root),
-        Engine::Podman => podman_security_posture(root),
-    }
-}
-
-fn docker_security_posture(root: &Path) -> String {
-    let args = [
-        String::from("info"),
-        String::from("--format"),
-        String::from("{{json .SecurityOptions}}"),
-    ];
-    let Ok(output) = run_oci_command(root, "docker", &args, COMMAND_TIMEOUT) else {
-        return String::from("unavailable");
-    };
-    if !output.status.success() {
-        return String::from("unavailable");
-    }
-    let Ok(options) = serde_json::from_slice::<Vec<String>>(&output.stdout) else {
-        return String::from("unavailable");
-    };
-    let enabled = |name: &str| options.iter().any(|option| option.contains(name));
-    format!(
-        "rootless={} seccomp={} apparmor={} selinux={}",
-        yes_no(enabled("rootless")),
-        yes_no(enabled("seccomp")),
-        yes_no(enabled("apparmor")),
-        yes_no(enabled("selinux")),
-    )
-}
-
-fn podman_security_posture(root: &Path) -> String {
-    let args = [
-        String::from("info"),
-        String::from("--format"),
-        String::from("json"),
-    ];
-    let Ok(output) = run_oci_command(root, "podman", &args, COMMAND_TIMEOUT) else {
-        return String::from("unavailable");
-    };
-    if !output.status.success() {
-        return String::from("unavailable");
-    }
-    let Ok(info) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
-        return String::from("unavailable");
-    };
-    format!(
-        "rootless={} seccomp={} apparmor={} selinux={}",
-        bool_status(find_json_bool(&info, "rootless")),
-        bool_status(find_json_bool(&info, "seccompenabled")),
-        bool_status(find_json_bool(&info, "apparmorenabled")),
-        bool_status(find_json_bool(&info, "selinuxenabled")),
-    )
-}
-
-fn find_json_bool(value: &serde_json::Value, requested: &str) -> Option<bool> {
-    match value {
-        serde_json::Value::Object(entries) => entries.iter().find_map(|(key, value)| {
-            if key.replace(['_', '-'], "").eq_ignore_ascii_case(requested) {
-                value.as_bool()
-            } else {
-                find_json_bool(value, requested)
-            }
-        }),
-        serde_json::Value::Array(values) => values
-            .iter()
-            .find_map(|value| find_json_bool(value, requested)),
-        _ => None,
-    }
-}
-
-const fn yes_no(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
-}
-
-const fn bool_status(value: Option<bool>) -> &'static str {
-    match value {
-        Some(true) => "yes",
-        Some(false) => "no",
-        None => "unknown",
-    }
 }
 
 pub fn build(repo_root: &Path) -> Result<String, BackendError> {
@@ -295,7 +211,7 @@ pub fn build_prepared_with_cache(
     let executor = crate::executor::resolve(&root, engine, &plan.platform, executor_image)?;
     crate::executor::bind(&mut plan, &executor);
     if cache.to.is_empty()
-        && current_image_state(&root, engine, &lock, preparations, Some(&signing))
+        && current_image_state(&root, engine, &lock, preparations, signing.as_ref())
             .is_ok_and(|(current, _)| current.dockerfile == plan.dockerfile)
     {
         return Ok(format!("current {}", plan.tag));
@@ -308,7 +224,7 @@ pub fn build_prepared_with_cache(
         &lock,
         preparations,
         cache,
-        &signing,
+        signing.as_ref(),
         &executor,
     )?;
     publish_certified_image(&root, engine, &lock, &plan, executor, &candidate)?;
@@ -390,7 +306,7 @@ fn build_image(
     lock: &EnvironmentLock,
     preparations: &[DependencyPreparationPlan],
     cache: &BuildCache,
-    signing: &SigningMaterial,
+    signing: Option<&SigningMaterial>,
     executor: &crate::executor::ExecutorIdentity,
 ) -> Result<CertifiedImage, BackendError> {
     let input = BuildInput::create(root, plan, preparations)?;
@@ -428,7 +344,7 @@ fn build_image(
 
     let manifest = generate_manifest(root, engine, &assembled_image)?;
     let certification = crate::certificate::create(lock, plan, manifest, signing)?;
-    input.add_certification(&assembled_tag, &certification)?;
+    input.add_certification(&assembled_tag, &assembled_image, &certification)?;
 
     let certified_iid = input.path.join("certified.iid");
     let certified_args = vec![
@@ -627,6 +543,9 @@ impl BuildInput {
                         .and_then(|()| {
                             write_new_file(&path.join("runtime-mise.toml"), &plan.runtime_mise_toml)
                         })
+                        .and_then(|()| {
+                            write_new_file(&path.join("entrypoint.sh"), IMAGE_ENTRYPOINT)
+                        })
                     {
                         let _ = fs::remove_dir_all(&path);
                         return Err(BackendError::execution(format!(
@@ -663,10 +582,11 @@ impl BuildInput {
 
     fn add_certification(
         &self,
+        assembled_tag: &str,
         assembled_image: &str,
         certification: &Certification,
     ) -> Result<(), BackendError> {
-        if !assembled_image
+        if !assembled_tag
             .strip_prefix("ayni-env-stage:")
             .is_some_and(|tag| {
                 !tag.is_empty()
@@ -674,13 +594,14 @@ impl BuildInput {
                         .bytes()
                         .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
             })
+            || !crate::executor::valid_digest(assembled_image)
         {
             return Err(BackendError::execution(
-                "assembled environment image has an invalid private tag",
+                "assembled environment image has an invalid private identity",
             ));
         }
         let dockerfile = format!(
-            "FROM {assembled_image}\nUSER root\nCOPY --chown=0:0 certificate.json {certificate_path}\nCOPY --chown=0:0 protected-content.manifest {manifest_path}\nRUN /usr/bin/chown 0:0 {certificate_path} {manifest_path} \\\n    && /usr/bin/chmod 0444 {certificate_path} {manifest_path}\nLABEL {owner_label}=\"{owner}\" \\\n      {schema_label}=\"{schema}\" \\\n      {key_label}=\"{key_id}\" \\\n      {root_label}=\"{content_root}\"\nUSER 10001:10001\nWORKDIR /workspace\n",
+            "FROM {assembled_tag}\nUSER root\nCOPY --chown=0:0 certificate.json {certificate_path}\nCOPY --chown=0:0 protected-content.manifest {manifest_path}\nRUN /usr/bin/chown 0:0 {certificate_path} {manifest_path} \\\n    && /usr/bin/chmod 0444 {certificate_path} {manifest_path}\nLABEL {owner_label}=\"{owner}\" \\\n      {schema_label}=\"{schema}\" \\\n      {key_label}=\"{key_id}\" \\\n      {root_label}=\"{content_root}\"\nUSER 10001:10001\nWORKDIR /workspace\n",
             certificate_path = CERTIFICATE_PATH,
             manifest_path = MANIFEST_PATH,
             owner_label = IMAGE_OWNER_LABEL,
@@ -798,7 +719,7 @@ fn generate_manifest(root: &Path, engine: Engine, image: &str) -> Result<String,
         engine,
         image,
         "/bin/sh",
-        &["-c", FILE_INVENTORY_SCRIPT],
+        &["-c", &inventory_script(FILE_INVENTORY_SCRIPT)],
         "generate protected-content file hashes",
     )?;
     let symlinks = image_process_output(
@@ -806,7 +727,7 @@ fn generate_manifest(root: &Path, engine: Engine, image: &str) -> Result<String,
         engine,
         image,
         "/bin/sh",
-        &["-c", SYMLINK_INVENTORY_SCRIPT],
+        &["-c", &inventory_script(SYMLINK_INVENTORY_SCRIPT)],
         "generate protected-content symlink inventory",
     )?;
     crate::certificate::manifest_from_inventory(&files, &symlinks)
@@ -986,8 +907,9 @@ fn current_image_state(
     crate::executor::validate_record_image(root, engine, &plan, &record)?;
     let expected = signing
         .map(|signing| {
-            read_image_text_file(root, engine, &plan.tag, MANIFEST_PATH, "manifest")
-                .and_then(|manifest| crate::certificate::create(lock, &plan, manifest, signing))
+            read_image_text_file(root, engine, &plan.tag, MANIFEST_PATH, "manifest").and_then(
+                |manifest| crate::certificate::create(lock, &plan, manifest, Some(signing)),
+            )
         })
         .transpose()?;
     validate_certified_image(
@@ -1025,6 +947,14 @@ mod cache_tests {
         for command in ["/usr/bin/find", "/usr/bin/sort", "/usr/bin/xargs"] {
             assert!(FILE_INVENTORY_SCRIPT.contains(command));
         }
+    }
+
+    #[test]
+    fn image_entrypoint_activates_only_the_protected_mise_configuration() {
+        assert!(IMAGE_ENTRYPOINT.contains("mise -C /etc/ayni env -s bash"));
+        assert!(IMAGE_ENTRYPOINT.contains("AYNI_RUNTIME_CARGO_HOME"));
+        assert!(!IMAGE_ENTRYPOINT.contains("MISE_CONFIG_FILE"));
+        assert!(!IMAGE_ENTRYPOINT.contains("mise exec"));
     }
 
     #[test]

@@ -7,8 +7,8 @@ LABEL org.opencontainers.image.source="https://github.com/ayni-oss/ayni" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.version="${AYNI_VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      dev.ayni.executor.lock-schema="0.8.0" \
-      dev.ayni.executor.recipe="1"
+      dev.ayni.executor.lock-schema="0.9.0" \
+      dev.ayni.executor.recipe="2"
 COPY --chmod=0755 ayni /usr/local/bin/ayni
 COPY LICENSE /usr/share/doc/ayni/
-ENTRYPOINT ["ayni"]
+CMD ["/bin/sh"]

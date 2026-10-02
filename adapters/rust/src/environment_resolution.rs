@@ -77,8 +77,6 @@ fn resolve_mise_query(
 ) -> Result<VersionRequirement, AdapterError> {
     let args = vec![
         "--no-config".to_owned(),
-        "--no-env".to_owned(),
-        "--no-hooks".to_owned(),
         "latest".to_owned(),
         query.to_owned(),
     ];

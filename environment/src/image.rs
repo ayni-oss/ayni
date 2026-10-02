@@ -16,7 +16,7 @@ pub(crate) const IMAGE_PLATFORM_LABEL: &str = "dev.ayni.environment.platform";
 pub(crate) const IMAGE_PREPARATION_LABEL: &str = "dev.ayni.environment.preparation-digest";
 pub(crate) const IMAGE_OWNER_LABEL: &str = "dev.ayni.environment.owner";
 pub(crate) const IMAGE_OWNER_VALUE: &str = "ayni";
-pub(crate) const IMAGE_SCHEMA_VERSION: &str = "0.8.0";
+pub(crate) const IMAGE_SCHEMA_VERSION: &str = "0.9.0";
 pub(crate) const MISE_GITHUB_TOKEN_SECRET: &str = "MISE_GITHUB_TOKEN";
 
 const MISE_GITHUB_TOKEN_SECRET_MOUNT: &str =
@@ -105,7 +105,7 @@ fn installation_digest(
     inventory: &ProvisioningInventory,
 ) -> Result<String, BackendError> {
     let inputs = serde_json::to_vec(&(
-        "installation-2",
+        "installation-3",
         platform,
         lock.provisioning_base(),
         lock.debian_packages(),
@@ -343,7 +343,33 @@ fn dockerfile(
     let base = lock.provisioning_base();
     let preparation = crate::preparation::dockerfile_fragment(lock, preparations)?;
     Ok(format!(
-        "FROM {}@{} AS ayni-runtime\n{debian_provisioning}USER ayni\nCOPY --chown=10001:10001 runtime-mise.toml /etc/ayni/mise.toml\nRUN chmod 0444 /etc/ayni/mise.toml\nENV MISE_CONFIG_FILE=/etc/ayni/mise.toml MISE_TRUSTED_CONFIG_PATHS=/etc/ayni\nRUN mise trust /etc/ayni/mise.toml\n{mise_provisioning}{node_package_manager_provisioning}RUN mise reshim\n{rustup_provisioning}ENV MISE_AUTO_INSTALL=0 MISE_CONFIG_FILE=/etc/ayni/mise.toml\nFROM ayni-runtime AS ayni-tools\n{provider_provisioning}RUN mise reshim\n{preparation}COPY --chown=10001:10001 mise.toml /etc/ayni/mise.toml\nRUN chmod 0444 /etc/ayni/mise.toml && mise trust /etc/ayni/mise.toml && mise reshim\nLABEL {IMAGE_SCHEMA_LABEL}=\"{IMAGE_SCHEMA_VERSION}\" {IMAGE_LOCK_LABEL}=\"{}\" {IMAGE_BASE_LABEL}=\"{}\" {IMAGE_AYNI_LABEL}=\"{}\" {IMAGE_MISE_LABEL}=\"{}\" {IMAGE_PLATFORM_LABEL}=\"{}\" {IMAGE_PREPARATION_LABEL}=\"{}\"\nWORKDIR {WORKSPACE}\n",
+        concat!(
+            "FROM {}@{} AS ayni-runtime\n{debian_provisioning}USER ayni\n",
+            "COPY --chown=10001:10001 runtime-mise.toml /etc/ayni/mise.toml\n",
+            "RUN chmod 0444 /etc/ayni/mise.toml\n",
+            "ENV MISE_TRUSTED_CONFIG_PATHS=/etc/ayni\nWORKDIR /etc/ayni\n",
+            "RUN mise trust mise.toml\n",
+            "{mise_provisioning}{node_package_manager_provisioning}{rustup_provisioning}",
+            "ENV MISE_AUTO_INSTALL=0 AYNI_RUNTIME_CARGO_HOME=/home/ayni/.cache/cargo\n",
+            "FROM ayni-runtime AS ayni-tools\n{provider_provisioning}{preparation}",
+            "COPY --chown=10001:10001 mise.toml /etc/ayni/mise.toml\n",
+            "RUN chmod 0444 /etc/ayni/mise.toml && mise trust mise.toml\n",
+            "COPY --chown=0:0 entrypoint.sh /usr/local/bin/ayni-entrypoint\nUSER root\n",
+            "RUN chown 0:0 / /etc /etc/ayni /usr /usr/local /usr/local/bin /opt /home \\\n",
+            "    && chmod 0755 / /etc /etc/ayni /usr /usr/local /usr/local/bin /opt /home \\\n",
+            "    && chown 0:0 /etc/ayni/mise.toml /usr/local/bin/ayni-entrypoint /usr/local/bin/mise \\\n",
+            "    && chmod 0755 /usr/local/bin/ayni-entrypoint /usr/local/bin/mise \\\n",
+            "    && chown -R 0:0 /opt/ayni \\\n",
+            "    && chmod -R u=rwX,go=rX /opt/ayni \\\n",
+            "    && chown 0:0 /home/ayni \\\n",
+            "    && chmod 0755 /home/ayni \\\n",
+            "    && if [ -e /home/ayni/.cache ]; then chown 0:0 /home/ayni/.cache && chmod 0755 /home/ayni/.cache; fi \\\n",
+            "    && if [ -e /home/ayni/.cache/cargo ]; then chown 0:0 /home/ayni/.cache/cargo && chmod 0755 /home/ayni/.cache/cargo; fi \\\n",
+            "    && if [ -e /home/ayni/.rustup ]; then chown -R 0:0 /home/ayni/.rustup && chmod -R u=rwX,go=rX /home/ayni/.rustup; fi \\\n",
+            "    && if [ -e /home/ayni/.cache/cargo/bin ]; then chown -R 0:0 /home/ayni/.cache/cargo/bin && chmod -R u=rwX,go=rX /home/ayni/.cache/cargo/bin; fi\n",
+            "USER ayni\nLABEL {IMAGE_SCHEMA_LABEL}=\"{IMAGE_SCHEMA_VERSION}\" {IMAGE_LOCK_LABEL}=\"{}\" {IMAGE_BASE_LABEL}=\"{}\" {IMAGE_AYNI_LABEL}=\"{}\" {IMAGE_MISE_LABEL}=\"{}\" {IMAGE_PLATFORM_LABEL}=\"{}\" {IMAGE_PREPARATION_LABEL}=\"{}\"\n",
+            "WORKDIR {WORKSPACE}\nENTRYPOINT [\"/usr/local/bin/ayni-entrypoint\"]\n",
+        ),
         base.reference,
         base.digest,
         lock.fingerprint(),
@@ -352,6 +378,21 @@ fn dockerfile(
         base.mise_version,
         platform,
         preparation_digest,
+        debian_provisioning = debian_provisioning,
+        mise_provisioning = mise_provisioning,
+        node_package_manager_provisioning = node_package_manager_provisioning,
+        rustup_provisioning = rustup_provisioning,
+        provider_provisioning = provider_provisioning,
+        preparation = preparation,
+        IMAGE_SCHEMA_LABEL = IMAGE_SCHEMA_LABEL,
+        IMAGE_SCHEMA_VERSION = IMAGE_SCHEMA_VERSION,
+        IMAGE_LOCK_LABEL = IMAGE_LOCK_LABEL,
+        IMAGE_BASE_LABEL = IMAGE_BASE_LABEL,
+        IMAGE_AYNI_LABEL = IMAGE_AYNI_LABEL,
+        IMAGE_MISE_LABEL = IMAGE_MISE_LABEL,
+        IMAGE_PLATFORM_LABEL = IMAGE_PLATFORM_LABEL,
+        IMAGE_PREPARATION_LABEL = IMAGE_PREPARATION_LABEL,
+        WORKSPACE = WORKSPACE,
     ))
 }
 
@@ -469,6 +510,10 @@ fn push_rustup_commands(
 ) {
     for (version, values) in versions {
         let mut command = vec![
+            String::from("mise"),
+            String::from("exec"),
+            format!("rust@{version}"),
+            String::from("--"),
             String::from("rustup"),
             kind.to_owned(),
             String::from("add"),
@@ -565,6 +610,30 @@ mod tests {
             digest: None,
             confidence: RequirementConfidence::Exact,
         }
+    }
+
+    #[test]
+    fn final_image_freezes_protected_tool_trees_before_certification() {
+        let lock: EnvironmentLock = serde_json::from_str(include_str!("../../.ayni.lock")).unwrap();
+        let plan = image_plan(&lock).unwrap();
+        for expected in [
+            "chown 0:0 / /etc /etc/ayni /usr /usr/local /usr/local/bin /opt /home",
+            "chmod 0755 / /etc /etc/ayni /usr /usr/local /usr/local/bin /opt /home",
+            "chown 0:0 /etc/ayni/mise.toml /usr/local/bin/ayni-entrypoint /usr/local/bin/mise",
+            "chmod 0755 /usr/local/bin/ayni-entrypoint /usr/local/bin/mise",
+            "chown -R 0:0 /opt/ayni",
+            "chmod -R u=rwX,go=rX /opt/ayni",
+            "chown 0:0 /home/ayni",
+            "chown 0:0 /home/ayni/.cache",
+            "chown 0:0 /home/ayni/.cache/cargo",
+            "chown -R 0:0 /home/ayni/.rustup",
+            "chown -R 0:0 /home/ayni/.cache/cargo/bin",
+            "ENTRYPOINT [\"/usr/local/bin/ayni-entrypoint\"]",
+        ] {
+            assert!(plan.dockerfile.contains(expected), "{expected}");
+        }
+        assert!(!plan.dockerfile.contains("MISE_CONFIG_FILE"));
+        assert!(!plan.dockerfile.contains("mise reshim"));
     }
 
     #[test]
@@ -684,10 +753,10 @@ mod tests {
         );
         let rustup = rustup_provisioning(&inventory);
         assert!(rustup.contains(
-            "[\"rustup\",\"component\",\"add\",\"--toolchain\",\"1.97.1\",\"llvm-tools-preview\"]"
+            "[\"mise\",\"exec\",\"rust@1.97.1\",\"--\",\"rustup\",\"component\",\"add\",\"--toolchain\",\"1.97.1\",\"llvm-tools-preview\"]"
         ));
         assert!(rustup.contains(
-            "[\"rustup\",\"target\",\"add\",\"--toolchain\",\"1.97.1\",\"wasm32-unknown-unknown\"]"
+            "[\"mise\",\"exec\",\"rust@1.97.1\",\"--\",\"rustup\",\"target\",\"add\",\"--toolchain\",\"1.97.1\",\"wasm32-unknown-unknown\"]"
         ));
         assert!(!rustup.contains("rust-docs"));
         assert!(!rustup.contains("clippy"));

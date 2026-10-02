@@ -11,16 +11,15 @@ complete independent evidence for every emitted row.
 The three parts of a signal run remain explicit:
 
 ```text
-Signal policy             Managed tools             Requested scope
-.ayni.toml            +   .ayni.lock / OCI image +  check / verify / impact
-thresholds and rules      exact execution            measured evidence
+Signal policy             Current tools             Requested scope
+.ayni.toml            +   local install / OCI image + check / verify / impact
+thresholds and rules      execution                  measured evidence
 ```
 
-Enabling a signal contributes its required analysis tools to the managed
-environment plan. After that environment is locked and built, `ayni check`,
-`ayni verify <signal>`, and `ayni impact run` launch it automatically. Use
-`--host` only as an explicit escape hatch; do not wrap quality commands in
-`ayni env run`.
+Enabling a signal contributes its required analysis tools to the environment
+plan. After that environment is locked and built, a platform can start the
+image with an attached checkout. `ayni check`, `ayni verify <signal>`, and
+`ayni impact run` always run where they are invoked.
 
 See [How Ayni works](/getting-started/how-ayni-works) for the complete mental
 model and [Managed environments](/product/environments) for provisioning.
@@ -65,8 +64,8 @@ compatibility promise.
 
 ## Version selection and compatibility
 
-`ayni check` and the explicit `ayni check --host` path both write
-`.ayni/last/signals.json`; adding `--output json` prints the same artifact.
+`ayni check` writes `.ayni/last/signals.json`; adding `--output json` prints
+the same artifact.
 Current output uses schema `0.4.0`. Consumers must inspect `schema_version` and
 use the matching version page rather than assuming fields from another
 envelope.

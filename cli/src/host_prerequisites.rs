@@ -10,14 +10,14 @@ pub(crate) struct SelectedCheck<'a> {
     pub(crate) collector: &'a dyn SignalCollector,
 }
 
-/// Validate every executable entry point required by the selected host
-/// execution topology, plus unqualified repository-wide Mise tools.
+/// Validate executable entry points for local execution. Verified environment
+/// images already carry the locked tool inventory and activation context.
 pub(crate) fn validate<'a>(
     repo_root: &Path,
     policy: &AyniPolicy,
     selected_checks: impl IntoIterator<Item = SelectedCheck<'a>>,
 ) -> Result<(), String> {
-    if crate::analysis::managed_execution_active() {
+    if crate::analysis::verified_environment_active() {
         return Ok(());
     }
 
@@ -56,7 +56,7 @@ pub(crate) fn validate<'a>(
 
     let missing = missing.into_iter().collect::<Vec<_>>().join(", ");
     Err(format!(
-        "host execution is missing required executable(s): {missing}. `--host` runs collectors using the host filesystem and PATH; install the required executable(s), or rerun without `--host` to use the locked managed environment"
+        "local execution is missing required executable(s): {missing}. Install the required tool(s), or build and launch the repository environment with `ayni env build`."
     ))
 }
 

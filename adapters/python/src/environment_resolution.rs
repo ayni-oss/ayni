@@ -115,7 +115,7 @@ fn run_mise(
     name: &str,
     command: &[String],
 ) -> Result<String, AdapterError> {
-    let mut args = vec!["--no-config".into(), "--no-env".into(), "--no-hooks".into()];
+    let mut args = vec!["--no-config".into()];
     args.extend_from_slice(command);
     let output = ayni_adapters_common::exec::run_command(
         request.repo_root(),

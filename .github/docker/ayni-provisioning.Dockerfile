@@ -42,7 +42,7 @@ ENV HOME=/home/ayni \
     RUSTUP_HOME=/home/ayni/.rustup \
     CARGO_HOME=/home/ayni/.cache/cargo \
     npm_config_cache=/home/ayni/.cache/npm \
-    PATH=/opt/ayni/mise/shims:/usr/local/bin:/usr/bin:/bin
+    PATH=/usr/local/bin:/usr/bin:/bin
 
 LABEL org.opencontainers.image.title="Ayni provisioning substrate" \
       org.opencontainers.image.description="Language-neutral substrate; Ayni assembles repository tools and its executor separately" \

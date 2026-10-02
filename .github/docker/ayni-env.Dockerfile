@@ -15,8 +15,8 @@ LABEL org.opencontainers.image.title="Ayni code environment" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.version="${AYNI_VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      dev.ayni.executor.lock-schema="0.8.0" \
-      dev.ayni.executor.recipe="1" \
+      dev.ayni.executor.lock-schema="0.9.0" \
+      dev.ayni.executor.recipe="2" \
       dev.ayni.environment.variant="debian" \
       dev.ayni.environment.mise-version="${MISE_VERSION}"
 
@@ -55,8 +55,8 @@ ENV HOME=/home/ayni \
     RUSTUP_HOME=/home/ayni/.rustup \
     CARGO_HOME=/home/ayni/.cache/cargo \
     npm_config_cache=/home/ayni/.cache/npm \
-    PATH=/opt/ayni/mise/shims:/usr/local/bin:/usr/bin:/bin
+    PATH=/usr/local/bin:/usr/bin:/bin
 
 USER 10001:10001
 WORKDIR /workspace
-ENTRYPOINT ["ayni"]
+CMD ["/bin/sh"]

@@ -6,7 +6,7 @@ Go roots are directories containing `go.mod`; discovery excludes VCS and
 `vendor` directories. A repository `go.work` marks a workspace controller, and
 the repository root is analyzed only when it contains `go.mod`.
 
-For managed execution, Ayni discovers `.go-version`, `.tool-versions`, `go`
+For environment resolution, Ayni discovers `.go-version`, `.tool-versions`, `go`
 and `toolchain` directives, validates `go.work` membership, and locks an exact
 Go runtime. Modules with declared dependencies require a committed `go.sum`.
 `env build` runs `go mod download all` only against staged, digest-checked
@@ -17,7 +17,7 @@ metadata. Container networking is disabled unless bridge networking is locked
 and the operator authorizes that invocation. Complexity additionally provisions
 pinned `gocyclo` `0.6.0` through its Go module provider.
 
-The Go toolchain and `gocyclo` remain user-owned prerequisites for `--host`
+The Go toolchain and `gocyclo` remain prerequisites outside an image.
 execution. Managed support does not cover module-less GOPATH projects, external
 local replacements, private registries requiring undeclared credentials, or
 cgo system libraries absent from the base image.
@@ -62,7 +62,7 @@ combined with `--package`. Unsupported or ambiguous selectors are rejected
 before `go` runs.
 
 Verification commands carry their originating contract and target, for example:
-`ayni verify test --host --config './.ayni.toml' --language go --root 'services/api'
+`ayni verify test --config './.ayni.toml' --language go --root 'services/api'
 --package './internal/api' --name 'TestCreate'`.
 
 ## Impact planning

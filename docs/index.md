@@ -86,7 +86,7 @@ Then run the complete repository contract before integration:
 ayni check
 ```
 
-These commands use the managed environment directly. Optional, read-write `env run` and `env shell` access is documented only under [advanced development access](/product/environments#advanced-development-access).
+These commands run in the current workspace. A built Ayni image supplies locked tools when a platform starts it with an attached checkout.
 
 ## Supported language adapters
 
@@ -98,4 +98,4 @@ These commands use the managed environment directly. Optional, read-write `env r
 | Python | uv projects and workspaces | [Python](/adapters/python) |
 | Kotlin | Supported Gradle projects and workspaces | [Kotlin](/adapters/kotlin) |
 
-Unsupported project variants fail explicitly instead of silently falling back to host tools. Signal depth also varies: consult the [adapter capability matrix](/product/capabilities). The `--host` option is labeled as an evaluation path and is not provenance-equivalent to managed evidence.
+Unsupported project variants fail explicitly. Signal depth also varies: consult the [adapter capability matrix](/product/capabilities).

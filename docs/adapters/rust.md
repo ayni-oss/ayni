@@ -7,13 +7,13 @@ Rust roots are directories containing `Cargo.toml`; discovery skips `target`,
 controller, while the repository root is analyzed only when its manifest also
 has `[package]`. Cargo commands for a member run from its workspace root.
 
-`cargo` and a Rust toolchain remain user-owned prerequisites for `--host`
+`cargo` and a Rust toolchain remain prerequisites when running outside an image.
 execution. `ayni env show` discovers Rust requirements and `ayni env lock`
 resolves exact runtime versions through `mise` and records adapter-pinned
 Cargo signal-tool versions; locking
 does not install tools or modify the checkout. `env build` stages the locked
 Cargo manifests, requires `Cargo.lock`, and runs `cargo fetch --locked` inside
-the image build. `env doctor`, `env shell`, `env run`, managed `check`, and
+the image build. `env doctor` and
 managed focused `verify` consume that image with Cargo online access disabled;
 container networking is disabled unless bridge networking is locked and the
 operator authorizes that invocation. Cargo `package.workspace` values that
@@ -60,7 +60,7 @@ combined with `--package`. Unsupported or ambiguous selectors are rejected
 before Cargo or another tool runs.
 
 Verification commands carry their originating contract and target, for example:
-`ayni verify test --host --config './.ayni.toml' --language rust --root '.' --package
+`ayni verify test --config './.ayni.toml' --language rust --root '.' --package
 'my-crate' --name 'my_test'`.
 
 ## Impact planning

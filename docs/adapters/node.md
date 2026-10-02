@@ -3,20 +3,18 @@
 ## Installation
 
 Configure roots in `.ayni.toml` and provide the documented runtime, package
-manager, and signal tools when using `--host`. `ayni env show` discovers Node
+manager, and signal tools in the current environment. `ayni env show` discovers Node
 requirements, and `ayni env lock` resolves runtime/package-manager ranges using
 `mise` candidates while reading exact project-tool versions from either
 `package-lock.json` or `pnpm-lock.yaml`. Locking does not install dependencies
 or modify the checkout. `env build` stages only locked manifests and native
 package-manager inputs, runs an ignore-scripts frozen installation (`npm ci` or
 `pnpm install --frozen-lockfile`), and stores `node_modules` as an image seed.
-Shell, run, managed check, and managed focused verification copy the seed below
-`.ayni/environment/`, mount it over the target, and run the corresponding
-offline rebuild in an ephemeral workspace without modifying the host checkout.
+The image entrypoint materializes the seed in an attached checkout using the
+locked offline preparation commands.
 npm `file:` and `link:`
 dependencies are rejected because their referenced content is not part of the
-staged input contract. Yarn and Bun remain unsupported for managed execution;
-use `--host` for those package managers.
+staged input contract. Yarn and Bun remain unsupported.
 
 ## Signal Coverage
 
@@ -59,7 +57,7 @@ mutation signal itself is unavailable, so `ayni verify mutation --language
 node` is rejected regardless of selectors or command overrides.
 
 Verification commands carry their originating contract and target, for example:
-`ayni verify test --host --config './.ayni.toml' --language node --root 'apps/web'
+`ayni verify test --config './.ayni.toml' --language node --root 'apps/web'
 --file 'src/example.test.ts' --name 'renders'`.
 
 ## Impact planning
@@ -85,7 +83,15 @@ Enabled checks come from `[checks]`. Configure roots in `[node].roots`
 `command` and may set `args`. With both signals enabled,
 `[node.tooling].coverage_satisfies_test = true` opts repository `check` into one
 coverage-backed execution that must emit both a Vitest JSON test report and a
-new coverage summary. Ayni appends an absolute
+new coverage summary.
+
+Test evidence may come from stdout/stderr or Vitest 5's default
+`.vitest/json/output.json` file in the target workdir. Ayni removes the prior
+file before normal, focused, and coverage-backed test runs; missing or invalid
+new evidence fails closed. Default Vitest commands explicitly set the absolute
+report path so package selection and Vitest root configuration cannot redirect it.
+
+Ayni appends an absolute
 `--coverage.reportsDirectory=<target>/coverage` option to coverage commands so
 repository Vitest root configuration cannot redirect the managed summary path. Missing either evidence type fails both rows closed. Node
 mutation is unavailable, including through
