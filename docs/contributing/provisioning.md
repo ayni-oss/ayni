@@ -30,12 +30,12 @@ require byte-for-byte equality before committing it.
 - verifies the project files required by the repository's CNCF-readiness policy;
 - installs the pinned public Ayni CLI, builds and verifies the committed managed
   environment, and runs `ayni check`; and
-- publishes the Markdown report consumed by the trusted Ayni PR-report workflow.
+- publishes the Markdown report and updates one marked Ayni results comment.
 
-The Ayni execution job has read-only repository permission. A separate trusted
-workflow runs after validation, consumes only its Markdown report artifact, and
-updates the existing marked comment instead of appending a new comment on each
-synchronization. Pull-request code therefore never receives a write credential.
+The Ayni execution job has read-only repository permission. Its comment job
+does not check out or execute pull-request code; it consumes only the Markdown
+report artifact and updates the existing marked comment instead of appending a
+new comment on each synchronization.
 
 Run affected fixtures and specialized delivery checks locally when changing
 adapter, environment, installer, or publication behavior. The pull-request
