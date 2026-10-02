@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 pub(crate) const INPUT_ROOT: &str = "/tmp/ayni/repository";
 pub(crate) const SEED_ROOT: &str = "/opt/ayni/dependencies";
 pub(crate) const CACHE_SEED_ROOT: &str = "/opt/ayni/cache-seed";
-const PREPARATION_IMPLEMENTATION_VERSION: &str = "11";
+const PREPARATION_IMPLEMENTATION_VERSION: &str = "12";
 
 // Package-manager caches can contain absolute links into their build-time home.
 // Keep internal links relocatable when the seed is copied into a disposable cache.
@@ -36,6 +36,43 @@ for link do
 done
 "#;
 
+// Prepared output trees may contain relative links between sibling workspace
+// directories. Copying each tree beneath its own content-addressed seed changes
+// that relationship, so rewrite only targets that resolve to another prepared
+// tree. External links deliberately remain untouched for certification to
+// reject when they escape protected content.
+const OUTPUT_LINK_SCRIPT: &str = r#"
+seed=$1
+source=$2
+shift 2
+while [ "$1" != "--" ]; do
+    source_root=$1
+    seed_root=$2
+    shift 2
+    mappings="${mappings-}${source_root}
+${seed_root}
+"
+done
+shift
+for link do
+    target=$(/usr/bin/readlink -- "$link")
+    case "$target" in
+        /*) resolved=$(/usr/bin/realpath -ms -- "$target") ;;
+        *) resolved=$(/usr/bin/realpath -ms -- "$source/${link#"$seed"}/../$target") ;;
+    esac
+    printf '%s' "$mappings" | while IFS= read -r source_root && IFS= read -r seed_root; do
+        case "$resolved" in
+            "$source_root"|"$source_root"/*)
+                relocated="$seed_root${resolved#"$source_root"}"
+                relative=$(/usr/bin/realpath -ms --relative-to="${link%/*}" -- "$relocated")
+                /bin/ln -snf -- "$relative" "$link"
+                break
+                ;;
+        esac
+    done
+done
+"#;
+
 fn cache_link_command<'a>(source: &'a str, seed: &'a str) -> Vec<&'a str> {
     vec![
         "/usr/bin/find",
@@ -53,6 +90,30 @@ fn cache_link_command<'a>(source: &'a str, seed: &'a str) -> Vec<&'a str> {
         "{}",
         "+",
     ]
+}
+
+fn output_link_command(output: &PreparationOutput, outputs: &[PreparationOutput]) -> Vec<String> {
+    let seed = format!("{SEED_ROOT}/{}", output_key(output));
+    let mut command = vec![
+        String::from("/usr/bin/find"),
+        seed.clone(),
+        String::from("-type"),
+        String::from("l"),
+        String::from("-exec"),
+        String::from("/bin/sh"),
+        String::from("-eu"),
+        String::from("-c"),
+        String::from(OUTPUT_LINK_SCRIPT),
+        String::from("ayni-output-links"),
+        seed,
+        docker_path(INPUT_ROOT, &output.path),
+    ];
+    for output in outputs {
+        command.push(docker_path(INPUT_ROOT, &output.path));
+        command.push(format!("{SEED_ROOT}/{}", output_key(output)));
+    }
+    command.extend([String::from("--"), String::from("{}"), String::from("+")]);
+    command
 }
 
 fn prepared_cache_copy(stage: &str) -> String {
@@ -93,14 +154,21 @@ pub(crate) fn dockerfile_fragment(
     output.push_str("FROM ayni-tools\n");
     for group in &groups {
         output.push_str(&prepared_cache_copy(&format!("preparation-{}", group.id)));
-        for prepared in unique_outputs(&group.plans) {
+        let prepared_outputs = unique_outputs(&group.plans);
+        for prepared in &prepared_outputs {
             if prepared.mode != PreparationOutputMode::Fresh {
-                output.push_str(&prepared_output_copy_instruction(&prepared).replace(
+                output.push_str(&prepared_output_copy_instruction(prepared).replace(
                     "--from=ayni-preparation",
                     &format!("--from=preparation-{}", group.id),
                 ));
                 output.push('\n');
             }
+        }
+        for prepared in &prepared_outputs {
+            let relocate_outputs =
+                serde_json::to_string(&output_link_command(prepared, &prepared_outputs))
+                    .expect("prepared output relocation command");
+            output.push_str(&format!("RUN {relocate_outputs}\n"));
         }
     }
     let relocate = serde_json::to_string(&cache_link_command("/home/ayni/.cache", CACHE_SEED_ROOT))
@@ -449,6 +517,55 @@ mod tests {
                 "cached wheel"
             );
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn output_links_preserve_workspace_topology_after_seed_relocation() {
+        use std::os::unix::fs::symlink;
+
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("repository");
+        let root_modules = source.join("node_modules");
+        let member_modules = source.join("packages/example/node_modules");
+        let seeds = temporary.path().join("dependencies");
+        let root_seed = seeds.join("root");
+        let member_seed = seeds.join("member");
+        fs::create_dir_all(root_seed.join(".pnpm/axe-core")).unwrap();
+        fs::create_dir_all(&member_seed).unwrap();
+        fs::write(root_seed.join(".pnpm/axe-core/data"), "dependency").unwrap();
+        symlink(
+            "../../../node_modules/.pnpm/axe-core",
+            member_seed.join("@axe-core"),
+        )
+        .unwrap();
+
+        let status = std::process::Command::new("/bin/sh")
+            .args([
+                "-eu",
+                "-c",
+                OUTPUT_LINK_SCRIPT,
+                "ayni-output-links",
+                member_seed.to_str().unwrap(),
+                member_modules.to_str().unwrap(),
+                root_modules.to_str().unwrap(),
+                root_seed.to_str().unwrap(),
+                member_modules.to_str().unwrap(),
+                member_seed.to_str().unwrap(),
+                "--",
+                member_seed.join("@axe-core").to_str().unwrap(),
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert_eq!(
+            fs::read_to_string(member_seed.join("@axe-core/data")).unwrap(),
+            "dependency"
+        );
+        assert_eq!(
+            fs::read_link(member_seed.join("@axe-core")).unwrap(),
+            Path::new("../root/.pnpm/axe-core")
+        );
     }
 
     #[test]
