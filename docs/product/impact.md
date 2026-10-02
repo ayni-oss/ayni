@@ -18,8 +18,8 @@ Run that plan:
 ayni impact run --base <revision>
 ```
 
-Managed execution is the default for `impact run`; use `--host` only as the
-explicit host escape hatch. `impact show` plans without running quality tools.
+`impact run` executes in the current workspace and execution environment.
+`impact show` plans without running quality tools.
 Both commands require an explicit local Git base and resolve it directly to a
 commit. The candidate is the final local working-tree state relative to that
 base: commits through `HEAD`, tracked index/worktree changes, and non-ignored

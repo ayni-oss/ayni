@@ -68,7 +68,14 @@ fn decode_certificate(
                 path.display()
             ))
         })?;
-    if certificate.key_id.trim().is_empty()
+    if certificate.key_id == "unsigned" {
+        if !certificate.signature.is_empty() {
+            return Err(BackendError::environment(format!(
+                "malformed prebuilt environment metadata {}: unsigned metadata has a signature",
+                path.display()
+            )));
+        }
+    } else if certificate.key_id.trim().is_empty()
         || certificate.key_id.len() > crate::MAX_CERTIFICATE_KEY_ID_BYTES
         || certificate.signature.len() != 128
         || !certificate
@@ -610,6 +617,7 @@ mod tests {
         let files = [
             ("/etc/ayni/mise.toml", b"[tools]\n".as_slice()),
             ("/usr/local/bin/ayni", b"ayni".as_slice()),
+            ("/usr/local/bin/ayni-entrypoint", b"entrypoint".as_slice()),
             ("/usr/local/bin/mise", b"mise".as_slice()),
             (
                 "/opt/ayni/mise/installs/rust/bin/rustc",

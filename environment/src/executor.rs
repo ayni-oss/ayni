@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub(crate) const RECIPE_VERSION: &str = ayni_core::ENVIRONMENT_LOCK_RECIPE_VERSION;
-const RECORD_SCHEMA: &str = "2";
+const RECORD_SCHEMA: &str = "3";
 pub(crate) const EXECUTOR_LABEL: &str = "dev.ayni.environment.executor";
 pub(crate) const RECIPE_LABEL: &str = "dev.ayni.environment.recipe";
 
@@ -160,7 +160,7 @@ pub(crate) fn bind(plan: &mut ImagePlan, executor: &ExecutorIdentity) {
     let identity = executor.fingerprint();
     plan.tag.push_str(&format!("-exec-{}", &identity[7..23]));
     plan.dockerfile = format!(
-        "FROM {} AS ayni-executor\n{}\nCOPY --from=ayni-executor /usr/local/bin/ayni /usr/local/bin/ayni\nLABEL {EXECUTOR_LABEL}=\"{identity}\" {RECIPE_LABEL}=\"{RECIPE_VERSION}\"\nENTRYPOINT [\"ayni\"]\n",
+        "FROM {} AS ayni-executor\n{}\nCOPY --from=ayni-executor /usr/local/bin/ayni /usr/local/bin/ayni\nLABEL {EXECUTOR_LABEL}=\"{identity}\" {RECIPE_LABEL}=\"{RECIPE_VERSION}\"\nCMD [\"/bin/sh\"]\n",
         executor.image(),
         plan.dockerfile
     );
@@ -256,8 +256,11 @@ pub(crate) fn resolve(
     platform: &str,
     explicit: Option<&str>,
 ) -> Result<ExecutorIdentity, BackendError> {
+    // Build records are a cache, never a prerequisite. A schema/recipe bump
+    // must recover by resolving the current thin executor rather than making
+    // `env build` instruct the caller to rerun itself.
     if explicit.is_none()
-        && let Some(record) = read_record(root)?
+        && let Ok(Some(record)) = read_record(root)
     {
         record.executor.validate(platform)?;
         return Ok(record.executor);
@@ -546,6 +549,9 @@ mod tests {
         );
         let mut malformed_certificate = record;
         malformed_certificate.schema_version = RECORD_SCHEMA.into();
+        malformed_certificate.recipe_version = RECIPE_VERSION.into();
+        malformed_certificate.certificate_schema_version =
+            ayni_core::ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION.into();
         malformed_certificate.protected_content_root = "not-a-digest".into();
         fs::write(&path, serde_json::to_vec(&malformed_certificate).unwrap()).unwrap();
         assert!(

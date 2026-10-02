@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Semantic version of the JSON `RunArtifact` contract (`schema_version` field).
-pub const AYNI_SIGNAL_SCHEMA_VERSION: &str = "0.4.0";
+pub const AYNI_SIGNAL_SCHEMA_VERSION: &str = "0.5.0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]

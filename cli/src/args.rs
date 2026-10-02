@@ -1,8 +1,7 @@
 use crate::application::{
-    CapabilityAuthorization, CheckOperation, ContractOperation, EnvLockOperation,
-    EnvPruneOperation, EnvRunOperation, EnvShellOperation, EnvShowOperation, EnvStorageOperation,
-    ExecutionMode, ImpactOperation, InitOperation, Operation, OutputFormat, RepositoryOperation,
-    ResultsCompareOperation, VerifyListOperation, VerifyOperation,
+    CheckOperation, ContractOperation, EnvLockOperation, EnvPruneOperation, EnvShowOperation,
+    EnvStorageOperation, ImpactOperation, InitOperation, Operation, OutputFormat,
+    RepositoryOperation, ResultsCompareOperation, VerifyListOperation, VerifyOperation,
 };
 use ayni_core::{Language, SignalKind};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -113,10 +112,6 @@ enum EnvCommands {
     Storage(EnvStorageOptions),
     /// Preview or remove stale repository state and explicitly selected images.
     Prune(EnvPruneOptions),
-    /// Enter the managed environment with the checkout mounted.
-    Shell(EnvShellOptions),
-    /// Run an arbitrary command inside the managed environment.
-    Run(EnvRunOptions),
 }
 
 impl EnvCommands {
@@ -128,24 +123,12 @@ impl EnvCommands {
             Self::Build(options) => Operation::EnvBuild(crate::application::EnvBuildOperation {
                 repo_root: options.repo_root,
                 executor_image: options.executor_image,
+                tag: options.tag,
                 cache_from: options.cache_from,
                 cache_to: options.cache_to,
             }),
             Self::Storage(options) => Operation::EnvStorage(options.into_operation()),
             Self::Prune(options) => Operation::EnvPrune(options.into_operation()),
-            Self::Shell(options) => Operation::EnvShell(EnvShellOperation {
-                repo_root: options.repo_root,
-                language: options.target.language.map(LanguageArg::into_language),
-                root: options.target.root,
-                authorization: options.authorization.into_authorization(),
-            }),
-            Self::Run(options) => Operation::EnvRun(EnvRunOperation {
-                repo_root: options.repo_root,
-                language: options.target.language.map(LanguageArg::into_language),
-                root: options.target.root,
-                command: options.command,
-                authorization: options.authorization.into_authorization(),
-            }),
         }
     }
 }
@@ -233,9 +216,7 @@ impl VerifyCommands {
             package,
             name,
             output: options.output.into(),
-            execution_mode: execution_mode(options.host),
             debug: options.debug,
-            authorization: options.authorization.into_authorization(),
         })
     }
 }
@@ -421,57 +402,6 @@ impl EnvPruneOptions {
 }
 
 #[derive(Args, Debug)]
-struct EnvironmentTargetOptions {
-    /// Activate one locked target instead of the composed repository environment; required with --root.
-    #[arg(long, value_enum)]
-    language: Option<LanguageArg>,
-    /// Select one normalized locked root.
-    #[arg(long)]
-    root: Option<String>,
-}
-
-#[derive(Args, Debug, Default)]
-struct CapabilityAuthorizationOptions {
-    /// Authorize bridge networking requested by the locked policy for this managed launch.
-    #[arg(long)]
-    allow_network: bool,
-    /// Authorize host Docker-socket access requested by the locked policy for this managed launch.
-    #[arg(long)]
-    allow_docker_socket: bool,
-}
-
-impl CapabilityAuthorizationOptions {
-    const fn into_authorization(self) -> CapabilityAuthorization {
-        CapabilityAuthorization {
-            allow_network: self.allow_network,
-            allow_docker_socket: self.allow_docker_socket,
-        }
-    }
-}
-
-#[derive(Args, Debug)]
-struct EnvShellOptions {
-    #[arg(long, default_value = ".")]
-    repo_root: PathBuf,
-    #[command(flatten)]
-    target: EnvironmentTargetOptions,
-    #[command(flatten)]
-    authorization: CapabilityAuthorizationOptions,
-}
-
-#[derive(Args, Debug)]
-struct EnvRunOptions {
-    #[arg(long, default_value = ".")]
-    repo_root: PathBuf,
-    #[command(flatten)]
-    target: EnvironmentTargetOptions,
-    #[command(flatten)]
-    authorization: CapabilityAuthorizationOptions,
-    #[arg(required = true, last = true, allow_hyphen_values = true)]
-    command: Vec<String>,
-}
-
-#[derive(Args, Debug)]
 struct ContractOptions {
     #[arg(long, default_value = DEFAULT_CONFIG)]
     config: PathBuf,
@@ -494,14 +424,9 @@ struct CheckOptions {
     config: PathBuf,
     #[arg(long, value_enum, default_value_t)]
     output: OutputArg,
-    /// Run on the host instead of in the managed environment.
-    #[arg(long)]
-    host: bool,
     /// Print raw command diagnostics.
     #[arg(long)]
     debug: bool,
-    #[command(flatten)]
-    authorization: CapabilityAuthorizationOptions,
 }
 
 impl CheckOptions {
@@ -509,9 +434,7 @@ impl CheckOptions {
         CheckOperation {
             config: self.config,
             output: self.output.into(),
-            execution_mode: execution_mode(self.host),
             debug: self.debug,
-            authorization: self.authorization.into_authorization(),
         }
     }
 }
@@ -534,14 +457,9 @@ struct VerifyCommonOptions {
     root: Option<String>,
     #[arg(long, value_enum, default_value_t)]
     output: OutputArg,
-    /// Run on the host instead of in the managed environment.
-    #[arg(long)]
-    host: bool,
     /// Print raw command diagnostics.
     #[arg(long)]
     debug: bool,
-    #[command(flatten)]
-    authorization: CapabilityAuthorizationOptions,
 }
 
 #[derive(Args, Debug)]
@@ -579,11 +497,7 @@ impl ImpactShowOptions {
             config: self.config,
             base: self.base,
             output: self.output.into(),
-            execution_mode: ExecutionMode::Managed,
             debug: false,
-            authorization: CapabilityAuthorization::default(),
-            managed_handoff: None,
-            managed_result: None,
         }
     }
 }
@@ -592,28 +506,15 @@ impl ImpactShowOptions {
 struct ImpactRunOptions {
     #[command(flatten)]
     common: ImpactShowOptions,
-    /// Run on the host instead of in the managed environment.
-    #[arg(long)]
-    host: bool,
     /// Print raw command diagnostics.
     #[arg(long)]
     debug: bool,
-    #[command(flatten)]
-    authorization: CapabilityAuthorizationOptions,
-    #[arg(long, hide = true)]
-    managed_handoff: Option<PathBuf>,
-    #[arg(long, hide = true)]
-    managed_result: Option<PathBuf>,
 }
 
 impl ImpactRunOptions {
     fn into_operation(self) -> ImpactOperation {
         let mut operation = self.common.into_operation();
-        operation.execution_mode = execution_mode(self.host);
         operation.debug = self.debug;
-        operation.authorization = self.authorization.into_authorization();
-        operation.managed_handoff = self.managed_handoff;
-        operation.managed_result = self.managed_result;
         operation
     }
 }
@@ -690,14 +591,6 @@ impl LanguageArg {
     }
 }
 
-fn execution_mode(host: bool) -> ExecutionMode {
-    if host {
-        ExecutionMode::Host
-    } else {
-        ExecutionMode::Managed
-    }
-}
-
 #[derive(Args, Debug)]
 struct EnvBuildOptions {
     /// Repository containing the committed environment lock.
@@ -706,6 +599,9 @@ struct EnvBuildOptions {
     /// Use this immutable executor image without changing the environment lock.
     #[arg(long, value_name = "REFERENCE@sha256:DIGEST")]
     executor_image: Option<String>,
+    /// Local tag applied to the built image. This does not publish it.
+    #[arg(long)]
+    tag: Option<String>,
     /// Import an external Buildx cache; repeat for multiple sources. Does not change the lock.
     #[arg(long, value_name = "CACHE")]
     cache_from: Vec<String>,
@@ -717,7 +613,7 @@ struct EnvBuildOptions {
 #[cfg(test)]
 mod tests {
     use super::Cli;
-    use crate::application::{ExecutionMode, Operation, OutputFormat};
+    use crate::application::{Operation, OutputFormat};
     use ayni_core::{Language, SignalKind};
     use clap::{CommandFactory, Parser};
     use std::path::PathBuf;
@@ -749,8 +645,6 @@ mod tests {
             (vec!["ayni", "env", "build"], "EnvBuild"),
             (vec!["ayni", "env", "storage"], "EnvStorage"),
             (vec!["ayni", "env", "prune"], "EnvPrune"),
-            (vec!["ayni", "env", "shell"], "EnvShell"),
-            (vec!["ayni", "env", "run", "--", "cargo", "test"], "EnvRun"),
             (vec!["ayni", "contract", "show"], "ContractShow"),
             (vec!["ayni", "tools", "reconcile"], "ToolsReconcile"),
             (vec!["ayni", "verify", "list"], "VerifyList"),
@@ -878,7 +772,6 @@ mod tests {
             "frontend/cart.test.ts",
             "--name",
             "formats money",
-            "--host",
             "--output",
             "json",
         ])
@@ -894,7 +787,6 @@ mod tests {
         assert_eq!(operation.package.as_deref(), Some("@example/web"));
         assert_eq!(operation.file.as_deref(), Some("frontend/cart.test.ts"));
         assert_eq!(operation.name.as_deref(), Some("formats money"));
-        assert_eq!(operation.execution_mode, ExecutionMode::Host);
         assert_eq!(operation.output, OutputFormat::Json);
     }
 
@@ -912,54 +804,14 @@ mod tests {
     }
 
     #[test]
-    fn env_run_preserves_the_forwarded_command() {
-        let operation = Cli::try_parse_from([
-            "ayni",
-            "env",
-            "run",
-            "--repo-root",
-            "fixture",
-            "--language",
-            "rust",
-            "--root",
-            "crates/app",
-            "--allow-network",
-            "--allow-docker-socket",
-            "--",
-            "cargo",
-            "test",
-            "--workspace",
-        ])
-        .expect("arguments parse")
-        .into_operation();
-        let Operation::EnvRun(operation) = operation else {
-            panic!("env run operation");
-        };
-        assert_eq!(operation.repo_root, PathBuf::from("fixture"));
-        assert_eq!(operation.language, Some(Language::Rust));
-        assert_eq!(operation.root.as_deref(), Some("crates/app"));
-        assert_eq!(operation.command, ["cargo", "test", "--workspace"]);
-        assert!(operation.authorization.allow_network);
-        assert!(operation.authorization.allow_docker_socket);
-    }
-
-    #[test]
-    fn managed_execution_is_default_and_host_is_explicit() {
-        let Operation::Check(default) = Cli::try_parse_from(["ayni", "check"])
-            .expect("check parses")
-            .into_operation()
-        else {
-            panic!("check operation");
-        };
-        let Operation::Check(host) = Cli::try_parse_from(["ayni", "check", "--host"])
-            .expect("host check parses")
-            .into_operation()
-        else {
-            panic!("check operation");
-        };
-        assert_eq!(default.execution_mode, ExecutionMode::Managed);
-        assert_eq!(host.execution_mode, ExecutionMode::Host);
-        assert_eq!(default.authorization, Default::default());
+    fn quality_commands_have_one_execution_mode() {
+        assert!(Cli::try_parse_from(["ayni", "check", "--host"]).is_err());
+        assert!(Cli::try_parse_from(["ayni", "verify", "test", "--host"]).is_err());
+        assert!(
+            Cli::try_parse_from(["ayni", "impact", "run", "--base", "main", "--host"]).is_err()
+        );
+        assert!(Cli::try_parse_from(["ayni", "env", "shell"]).is_err());
+        assert!(Cli::try_parse_from(["ayni", "env", "run", "--", "cargo", "test"]).is_err());
     }
 
     #[test]
@@ -991,10 +843,10 @@ mod tests {
             );
         }
         assert!(
-            Cli::try_parse_from([
-                "ayni", "impact", "run", "--base", "main", "--host", "--debug"
-            ])
-            .is_ok()
+            Cli::try_parse_from(["ayni", "impact", "run", "--base", "main", "--debug"]).is_ok()
+        );
+        assert!(
+            Cli::try_parse_from(["ayni", "impact", "run", "--base", "main", "--host"]).is_err()
         );
     }
 

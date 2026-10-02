@@ -30,9 +30,6 @@ use clap::Parser;
 use registry::build_registry;
 
 fn main() -> ExitCode {
-    if let Err(error) = prebuilt_runtime::validate_worker() {
-        return crate::application_error::render_error(error);
-    }
     dispatch(args::Cli::parse().into_operation())
 }
 
@@ -50,9 +47,7 @@ fn dispatch(operation: application::Operation) -> ExitCode {
         | Operation::EnvDoctor(_)
         | Operation::EnvBuild(_)
         | Operation::EnvStorage(_)
-        | Operation::EnvPrune(_)
-        | Operation::EnvShell(_)
-        | Operation::EnvRun(_)) => dispatch_environment(operation),
+        | Operation::EnvPrune(_)) => dispatch_environment(operation),
         Operation::ContractShow(operation) => dispatch_contract(operation),
         Operation::ToolsReconcile(operation) => tooling::run(operation, &build_registry()),
         Operation::AgentsSync(operation) => agents_sync(&operation.repo_root),
@@ -74,57 +69,21 @@ fn dispatch(operation: application::Operation) -> ExitCode {
     }
 }
 
-fn dispatch_analysis(mut operation: application::Operation) -> ExitCode {
-    use application::{ExecutionMode, Operation};
-
-    prebuilt_runtime::resolve_source_config(&mut operation);
-    if host_mode_has_managed_authorization(&operation) {
-        eprintln!(
-            "--allow-network and --allow-docker-socket authorize managed-container capabilities; remove them when using --host"
-        );
-        return ExitCode::from(2);
-    }
+fn dispatch_analysis(operation: application::Operation) -> ExitCode {
+    use application::Operation;
 
     match operation {
-        Operation::Check(operation) if operation.execution_mode == ExecutionMode::Host => {
-            dispatch_host_check(operation)
-        }
-        Operation::Verify(operation) if operation.execution_mode == ExecutionMode::Host => {
-            run_verify_operation(operation)
-        }
-        Operation::ImpactRun(operation) if operation.execution_mode == ExecutionMode::Host => {
-            impact::run(operation)
-        }
-        Operation::Check(operation) => environment_backend::check(operation, &build_registry()),
-        Operation::Verify(operation) => environment_backend::verify(operation, &build_registry()),
-        Operation::ImpactRun(operation) => {
-            environment_backend::impact_run(operation, &build_registry())
-        }
+        Operation::Check(operation) => dispatch_check(operation),
+        Operation::Verify(operation) => dispatch_verify(operation),
+        Operation::ImpactRun(operation) => dispatch_impact(operation),
         _ => unreachable!("dispatch_analysis received a non-analysis operation"),
     }
 }
 
-fn host_mode_has_managed_authorization(operation: &application::Operation) -> bool {
-    use application::{ExecutionMode, Operation};
-
-    match operation {
-        Operation::Check(operation) => {
-            operation.execution_mode == ExecutionMode::Host
-                && operation.authorization != application::CapabilityAuthorization::default()
-        }
-        Operation::Verify(operation) => {
-            operation.execution_mode == ExecutionMode::Host
-                && operation.authorization != application::CapabilityAuthorization::default()
-        }
-        Operation::ImpactRun(operation) => {
-            operation.execution_mode == ExecutionMode::Host
-                && operation.authorization != application::CapabilityAuthorization::default()
-        }
-        _ => false,
+fn dispatch_check(operation: application::CheckOperation) -> ExitCode {
+    if let Err(error) = prebuilt_runtime::activate(&operation.config) {
+        return crate::application_error::render_error(error);
     }
-}
-
-fn dispatch_host_check(operation: application::CheckOperation) -> ExitCode {
     match analyze(
         operation.config.to_string_lossy().as_ref(),
         AnalyzeOptions {
@@ -135,6 +94,20 @@ fn dispatch_host_check(operation: application::CheckOperation) -> ExitCode {
         Ok(outcome) => crate::application_error::outcome_exit(outcome),
         Err(error) => crate::application_error::render_error(error),
     }
+}
+
+fn dispatch_verify(operation: application::VerifyOperation) -> ExitCode {
+    if let Err(error) = prebuilt_runtime::activate(&operation.config) {
+        return crate::application_error::render_error(error);
+    }
+    run_verify_operation(operation)
+}
+
+fn dispatch_impact(operation: application::ImpactOperation) -> ExitCode {
+    if let Err(error) = prebuilt_runtime::activate(&operation.config) {
+        return crate::application_error::render_error(error);
+    }
+    impact::run(operation)
 }
 
 fn dispatch_environment(operation: application::Operation) -> ExitCode {
@@ -148,8 +121,6 @@ fn dispatch_environment(operation: application::Operation) -> ExitCode {
         Operation::EnvBuild(operation) => environment_backend::build(operation, &registry),
         Operation::EnvStorage(operation) => environment_backend::storage(operation, &registry),
         Operation::EnvPrune(operation) => environment_backend::prune(operation, &registry),
-        Operation::EnvShell(operation) => environment_backend::shell(operation, &registry),
-        Operation::EnvRun(operation) => environment_backend::run(operation, &registry),
         _ => unreachable!("dispatch_environment received a non-environment operation"),
     }
 }

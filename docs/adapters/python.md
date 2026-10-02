@@ -14,8 +14,7 @@ the lock. Managed launch creates a fresh root-specific `.venv` offline, mounts
 it over the checkout without modifying repository files, and forces uv's frozen,
 o-sync, offline behavior. Poetry, PDM, Pipenv, Hatch, plain pip, excluded uv
 workspace members, ambiguous locked tool versions, and undeclared project tools
-fail closed for managed execution. They remain available through the explicit
-`--host` path with their documented user-owned prerequisites.
+fail closed. Install their documented prerequisites in the current environment.
 
 ## Signal Coverage
 
@@ -57,7 +56,7 @@ combined with `--package`. Unsupported or ambiguous selectors are rejected
 before a tool runs.
 
 Verification commands carry their originating contract and target, for example:
-`ayni verify test --host --config './.ayni.toml' --language python --root '.' --file
+`ayni verify test --config './.ayni.toml' --language python --root '.' --file
 'tests/test_api.py' --name 'test_create'`.
 
 ## Impact planning

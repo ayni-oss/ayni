@@ -80,7 +80,9 @@ def inspect_executor(identity: str, metadata: dict) -> None:
         identity,
         "/usr/local/bin/ayni",
     ).split()[0]
-    version = command("docker", "run", "--rm", identity, "--version")
+    version = command(
+        "docker", "run", "--rm", "--entrypoint", "/usr/local/bin/ayni", identity, "--version"
+    )
     if digest != metadata["files"]["ayni"] or version != f'ayni {metadata["version"]}':
         raise ValueError("host candidate and container executor differ")
 

@@ -1,8 +1,9 @@
 # Ayni
 
 Ayni is a local quality protocol for repositories that use AI agents.
-Maintainers commit policy, Ayni runs repository tools in a reproducible managed
-environment, and agents receive scoped, actionable evidence.
+Maintainers commit policy, Ayni runs repository tools in the current workspace,
+and agents receive scoped, actionable evidence. Ayni can also build a portable
+development image containing the repository's locked tools.
 
 Ayni is intentionally forge-neutral and deterministic. It does not generate
 probabilistic review commentary; it normalizes real repository-tool outcomes
@@ -31,7 +32,7 @@ repair targets.
 - can create or update its marked agent-facing guidance in `AGENTS.md` with an explicit command
 - defines the repository-agent quality contract in `.ayni.toml`
 - models `test`, `coverage`, `size`, `complexity`, `deps`, and `mutation` evidence, with explicit adapter capability tiers
-- runs language-specific tooling through adapters in locked managed environments
+- runs language-specific tooling through adapters in the current execution environment
 - writes machine-readable artifacts under `.ayni/`
 - prints terminal or Markdown reports for local workflows and AI repair loops
 
@@ -69,9 +70,9 @@ ayni init --write
 ayni contract show
 ```
 
-For a supported repository, resolve and build the managed environment before
-running the complete repository contract. `env build` requires the certificate
-signing variables documented in [Managed environments](docs/product/environments.md#build-and-dependency-preparation).
+Build a reusable environment image when developers, CI, or a coding platform
+need the locked toolchain. Signing is optional: supply both signing variables
+for a builder-identity signature, or neither for local-consistency metadata.
 
 ```sh
 ayni env show
@@ -91,11 +92,12 @@ ayni env prune
 ayni env prune --apply --current
 ```
 
-CI runs `check`, `verify`, and `impact run` with their managed default. During
-development, run the same commands with explicit `--host` execution (for
-example, `ayni check --host`); its runtime and tool versions are not locked.
-Supported project shapes and the complete lifecycle are documented in the
-[quickstart](docs/getting-started/quickstart.md) and [managed environment guide](docs/product/environments.md).
+`check`, `verify`, and `impact run` always run in the current workspace. On a
+clean host they report missing tools with setup guidance. Inside a built Ayni
+image they verify `/etc/ayni/runtime.json` against the attached checkout lock
+before activating locked tools. Supported project shapes and the complete
+lifecycle are documented in the [quickstart](docs/getting-started/quickstart.md)
+and [environment guide](docs/product/environments.md).
 
 Use focused verification for the inner repair loop:
 
@@ -151,8 +153,8 @@ ayni results compare --baseline before.json --candidate after.json
 Built images also support `check`, `verify`, and `impact run` when launched
 externally with the [portable certified execution contract](docs/product/environments.md#portable-certified-execution), without an OCI engine inside the container.
 
-For command details, advanced `env shell`/`env run` access, output behavior, and
-result comparison semantics, see the [CLI reference](docs/cli.md),
+For command details, image launch examples, output behavior, and result
+comparison semantics, see the [CLI reference](docs/cli.md),
 [configuration reference](docs/product/config.md), and
 [conceptual guide](docs/getting-started/how-ayni-works.md).
 

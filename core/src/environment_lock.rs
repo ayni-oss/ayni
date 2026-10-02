@@ -10,9 +10,9 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path};
 
 /// Version of the committed, deterministic environment lock document.
-pub const ENVIRONMENT_LOCK_SCHEMA_VERSION: &str = "0.8.0";
+pub const ENVIRONMENT_LOCK_SCHEMA_VERSION: &str = "0.9.0";
 /// Provisioning and execution recipe contract accepted by this lock schema.
-pub const ENVIRONMENT_LOCK_RECIPE_VERSION: &str = "1";
+pub const ENVIRONMENT_LOCK_RECIPE_VERSION: &str = "2";
 
 /// Immutable OCI base selected by the environment backend. The reference is
 /// human-readable while the digest is the authoritative image identity.

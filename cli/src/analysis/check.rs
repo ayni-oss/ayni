@@ -182,11 +182,7 @@ fn materialize_findings_or_persist_failure(
     registry: &AdapterRegistry,
     artifact: &mut RunArtifact,
 ) -> Result<(), AnalyzeError> {
-    let result = verification_command::materialize_finding_commands(
-        artifact,
-        registry,
-        !managed_execution_active(),
-    );
+    let result = verification_command::materialize_finding_commands(artifact, registry);
     if let Err(error) = result {
         persist_incomplete_execution_artifact(
             workspace_root,

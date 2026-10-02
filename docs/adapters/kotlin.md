@@ -20,7 +20,7 @@ copy source or edit build files. Managed Gradle commands use the locked JDK,
 set `JAVA_HOME`, and add `--offline --no-daemon`. Coverage, complexity, and
 mutation require exact repository plugin declarations for Kover/JaCoCo,
 Detekt, and PIT respectively. The Gradle runner, JDK, and plugins remain
-user-owned prerequisites for `--host` execution. Composite builds, dynamic
+prerequisites outside an image. Composite builds, dynamic
 plugin versions, Android SDK management, missing dependency locks, and private
 repositories requiring undeclared credentials are not supported by the first
 managed slice.
@@ -66,7 +66,7 @@ cannot be combined with `--package`; unsupported or ambiguous selectors are
 rejected before Gradle runs.
 
 Verification commands carry their originating contract and target, for example:
-`ayni verify test --host --config './.ayni.toml' --language kotlin --root '.' --package
+`ayni verify test --config './.ayni.toml' --language kotlin --root '.' --package
 'com.example.ApiTest' --name 'createsUser'`.
 
 ## Impact planning

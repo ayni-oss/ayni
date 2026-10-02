@@ -22,7 +22,9 @@ Follow [Installation](/getting-started/installation), then confirm the CLI is av
 ayni --version
 ```
 
-Managed execution also needs Docker with Buildx and Mise. See the [managed-environment prerequisites](/getting-started/installation#managed-environment-prerequisites).
+Building an image needs Docker with Buildx and Mise. `check`, `verify`, and
+`impact run` themselves run in the current workspace and need only the selected
+repository tools.
 
 ## 2. Preview a minimal policy
 
@@ -89,9 +91,12 @@ The plan explains missing or unsupported runtime inputs before anything is locke
 
 ## 5. Lock and build the managed environment
 
-Before building, provide `AYNI_ENV_CERTIFICATE_SIGNING_KEY` and
-`AYNI_ENV_CERTIFICATE_KEY_ID` as described in the
-[environment build contract](/product/environments#build-and-dependency-preparation).
+Provide both `AYNI_ENV_CERTIFICATE_SIGNING_KEY` and
+`AYNI_ENV_CERTIFICATE_KEY_ID` to sign an image with a repository-pinned key.
+Provide neither for an unsigned image whose metadata still verifies its local
+lock and protected content. The signing value is a lowercase hexadecimal
+Ed25519 seed, not a PEM file; see [Signing an environment image](/product/environments#signing-an-environment-image)
+for generation, key pinning, and CI setup.
 
 ```sh
 ayni env lock
@@ -111,7 +116,10 @@ Commit `.ayni.toml`, `.ayni.lock`, and native dependency/tool locks. Ignore `.ay
 ayni check
 ```
 
-`check` launches the locked managed environment automatically and evaluates every enabled, supported signal for every configured root. Do not wrap it in `ayni env run`.
+`check` evaluates every enabled, supported signal for every configured root in
+the current workspace. Do not wrap it in another Ayni command. Launch a built
+image with your normal container or coding platform tooling, attach the
+checkout, and run the same `ayni check` command there.
 
 The full artifact is written to `.ayni/last/signals.json`. To render the same evidence in another format:
 
@@ -147,20 +155,10 @@ failures. Read the reported diagnostic before changing code or thresholds.
 readiness, and `verify`/`check` execute quality checks. None repairs source or
 native dependency declarations automatically.
 
-## Evaluation-only host path
+## Run in a built image
 
-When a repository cannot yet satisfy managed prerequisites, `--host` can demonstrate the policy and artifact loop with user-installed tools:
-
-```sh
-ayni check --host
-ayni verify test --host
-```
-
-This is an **evaluation and compatibility path**, not equivalent evidence. Host artifacts are labeled `execution_mode = "host"`, have no environment-lock fingerprint, and are provenance-incompatible with managed artifacts.
-
-## Advanced development access
-
-`env shell` and `env run` expose the composed environment, or a selected target for arbitrary development commands. They add no quality semantics and mount the host checkout read-write, so they are intentionally outside the first-run workflow. See [Managed environments](/product/environments#advanced-development-access).
+Images default to `/bin/sh`. Attach the checkout at the location your platform
+uses, then run native development commands or `ayni check` from that checkout.
 
 ## What to read next
 
