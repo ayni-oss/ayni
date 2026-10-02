@@ -47,8 +47,8 @@ jobs:
           test -f ROADMAP.md
           test -f .github/dco.yml
 
-  quality:
-    name: Repository and environment checks
+  product:
+    name: Product integration checks
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -60,11 +60,26 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
+        with:
+          components: rustfmt, clippy
       - name: Validate the repository
         run: |
           cargo fmt --all -- --check
           cargo clippy --workspace --all-targets --all-features -- -D warnings
           cargo test --workspace --all-features
+
+  ayni:
+    name: Ayni repository contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
       - name: Build the PR CLI and executor
         id: candidate
         env:
@@ -102,10 +117,11 @@ jobs:
   complete:
     name: Required completion
     if: ${{ always() }}
-    needs: [metadata, cncf, quality]
+    needs: [metadata, cncf, product, ayni]
     runs-on: ubuntu-24.04
     steps:
       - run: |
           test '${{ needs.metadata.result }}' = success
           test '${{ needs.cncf.result }}' = success
-          test '${{ needs.quality.result }}' = success
+          test '${{ needs.product.result }}' = success
+          test '${{ needs.ayni.result }}' = success
