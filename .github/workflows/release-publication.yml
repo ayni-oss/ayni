@@ -208,10 +208,10 @@ jobs:
             --file .github/docker/ayni-candidate.Dockerfile --tag "$IMAGE" executor
           test "$(docker run --rm --platform "$PLATFORM" "$IMAGE" /usr/local/bin/ayni --version)" = "ayni ${EXPECTED_VERSION}"
           labels="$(docker image inspect "$IMAGE" --format '{{json .Config.Labels}}')"
-          test "$(jq --raw-output '.\"org.opencontainers.image.revision\"' <<<"$labels")" = "$EXPECTED_COMMIT"
-          test "$(jq --raw-output '.\"org.opencontainers.image.version\"' <<<"$labels")" = "$EXPECTED_VERSION"
-          test "$(jq --raw-output '.\"dev.ayni.executor.lock-schema\"' <<<"$labels")" = "0.9.0"
-          test "$(jq --raw-output '.\"dev.ayni.executor.recipe\"' <<<"$labels")" = "2"
+          test "$(jq --raw-output '.["org.opencontainers.image.revision"]' <<<"$labels")" = "$EXPECTED_COMMIT"
+          test "$(jq --raw-output '.["org.opencontainers.image.version"]' <<<"$labels")" = "$EXPECTED_VERSION"
+          test "$(jq --raw-output '.["dev.ayni.executor.lock-schema"]' <<<"$labels")" = "0.9.0"
+          test "$(jq --raw-output '.["dev.ayni.executor.recipe"]' <<<"$labels")" = "2"
 
       - name: Publish architecture executor
         env:
@@ -249,15 +249,15 @@ jobs:
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker buildx imagetools create --tag "$IMAGE" "$AMD64_IMAGE" "$ARM64_IMAGE"
           manifest="$(docker buildx imagetools inspect "$IMAGE" --raw)"
-          test "$(jq '[.manifests[] | .platform.os + "/" + .platform.architecture] | sort' <<<"$manifest")" = '["linux/amd64","linux/arm64"]'
-          digest="$(docker buildx imagetools inspect "$IMAGE" --format '{{.Digest}}')"
-          test "$digest" != ""
+          test "$(jq --compact-output '[.manifests[] | .platform.os + "/" + .platform.architecture] | sort' <<<"$manifest")" = '["linux/amd64","linux/arm64"]'
+          digest="$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           docker logout ghcr.io || true
           docker pull --platform linux/amd64 "$IMAGE@$digest"
           test "$(docker run --rm --platform linux/amd64 "$IMAGE@$digest" /usr/local/bin/ayni --version)" = "ayni ${EXPECTED_VERSION}"
           labels="$(docker image inspect "$IMAGE@$digest" --format '{{json .Config.Labels}}')"
-          test "$(jq --raw-output '.\"org.opencontainers.image.revision\"' <<<"$labels")" = "$EXPECTED_COMMIT"
-          test "$(jq --raw-output '.\"org.opencontainers.image.version\"' <<<"$labels")" = "$EXPECTED_VERSION"
-          test "$(jq --raw-output '.\"dev.ayni.executor.lock-schema\"' <<<"$labels")" = "0.9.0"
-          test "$(jq --raw-output '.\"dev.ayni.executor.recipe\"' <<<"$labels")" = "2"
+          test "$(jq --raw-output '.["org.opencontainers.image.revision"]' <<<"$labels")" = "$EXPECTED_COMMIT"
+          test "$(jq --raw-output '.["org.opencontainers.image.version"]' <<<"$labels")" = "$EXPECTED_VERSION"
+          test "$(jq --raw-output '.["dev.ayni.executor.lock-schema"]' <<<"$labels")" = "0.9.0"
+          test "$(jq --raw-output '.["dev.ayni.executor.recipe"]' <<<"$labels")" = "2"
           echo "executor_image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
