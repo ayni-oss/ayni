@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.1...ayni-v0.14.2) (2026-10-02)
+
+
+### Bug Fixes
+
+* **release:** correct executor metadata validation ([#54](https://github.com/ayni-oss/ayni/issues/54)) ([f6c3f91](https://github.com/ayni-oss/ayni/commit/f6c3f91c85614fd144685b3fe19dee31063a5ab8))
+
 ## [0.14.1](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.0...ayni-v0.14.1) (2026-10-02)
 
 
