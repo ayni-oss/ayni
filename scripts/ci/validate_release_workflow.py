@@ -74,6 +74,8 @@ def main() -> int:
             "needs: release" in sync_lock
             and "needs.release.outputs.release_pr_available == 'true'" in sync_lock
             and "release-pr-maintenance" in sync_lock
+            and "jdx/mise-action@" in sync_lock
+            and "version: 2026.6.14" in sync_lock
             and "cargo run --locked -p ayni-cli -- env lock --repo-root ." in sync_lock
             and 'cmp "$RUNNER_TEMP/release-lock.first" .ayni.lock' in sync_lock
             and 'git commit -m "chore(release): refresh Ayni lock"' in sync_lock,
