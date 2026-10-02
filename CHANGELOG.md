@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.2...ayni-v0.14.3) (2026-10-02)
+
+
+### Bug Fixes
+
+* **environment:** preserve pnpm workspace seed links ([#57](https://github.com/ayni-oss/ayni/issues/57)) ([a9457d6](https://github.com/ayni-oss/ayni/commit/a9457d6fbd0d15a72162920a9f1098c5c77446be))
+
 ## [0.14.2](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.1...ayni-v0.14.2) (2026-10-02)
 
 
