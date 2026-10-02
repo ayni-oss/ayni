@@ -73,8 +73,9 @@ cargo doc-cli > docs/cli.md
 
 Run the CLI-reference diff and VitePress build locally when documentation or
 CLI output changes. The `PR Validation` workflow runs the repository's configured
-Ayni contract and updates one durable Ayni results comment on the pull request;
-it does not deploy the documentation site.
+Ayni contract; the trusted report workflow updates one durable Ayni results
+comment on the pull request. The workflow does not deploy the documentation
+site.
 
 For language adapter implementation guidance, see
 [`docs/contributing/adapters.md`](docs/contributing/adapters.md).

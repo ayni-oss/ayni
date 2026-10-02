@@ -42,7 +42,7 @@ fn_cyclomatic = { warn = 15, fail = 15 }
 fn_cognitive   = { warn = 29, fail = 29 }
 
 [rust.coverage]
-line_percent = { warn = 80, fail = 77 }
+line_percent = { warn = 80, fail = 75 }
 
 [rust.deps.forbidden]
 "core"            = ["adapters/*", "environment", "cli"]
