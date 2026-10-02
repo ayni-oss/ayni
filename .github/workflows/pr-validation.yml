@@ -105,7 +105,7 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" \
             --env HOME=/tmp/home \
             --env XDG_CACHE_HOME=/tmp/cache \
-            --env MISE_CACHE_DIR=/home/ayni/.cache/mise \
+            --env MISE_CACHE_DIR=/tmp/mise \
             --env CARGO_HOME=/tmp/cargo \
             --env CARGO_TARGET_DIR=/tmp/target \
             --env npm_config_cache=/tmp/npm \
@@ -113,8 +113,7 @@ jobs:
             --env UV_CACHE_DIR=/tmp/uv \
             --mount "type=bind,source=$PWD,target=/workspace" \
             --workdir /workspace \
-            --entrypoint /usr/local/bin/ayni "$image" \
-            check --config .ayni.toml --output markdown | tee "$RUNNER_TEMP/ayni.md"
+            "$image" ayni check --config .ayni.toml --output markdown | tee "$RUNNER_TEMP/ayni.md"
       - name: Upload Ayni evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

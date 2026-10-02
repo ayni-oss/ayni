@@ -289,7 +289,7 @@ fn preparation_run_instruction(
     let mut argv = vec![
         String::from("/bin/sh"),
         String::from("-c"),
-        String::from("cd \"$1\" && shift && exec \"$@\""),
+        String::from("cd \"$1\" && shift && exec env \"$@\""),
         String::from("ayni-preparation"),
         docker_path(INPUT_ROOT, &command.cwd),
         String::from("env"),
@@ -305,7 +305,16 @@ fn preparation_run_instruction(
             .iter()
             .map(|(name, value)| format!("{name}={value}")),
     );
-    argv.push(command.program.clone());
+    argv.extend([
+        String::from("/bin/sh"),
+        String::from("-eu"),
+        String::from("-c"),
+        String::from(
+            "environment=\"$(/usr/local/bin/mise -C /etc/ayni env -s bash)\"; eval \"$environment\"; exec \"$@\"",
+        ),
+        String::from("ayni-preparation-activate"),
+        command.program.clone(),
+    ]);
     argv.extend(command.args.clone());
     format!(
         "RUN {}",
@@ -460,9 +469,21 @@ mod tests {
         )
         .expect("JSON-form RUN");
         assert_eq!(argv[0], "/bin/sh");
-        assert_eq!(argv[2], "cd \"$1\" && shift && exec \"$@\"");
+        assert_eq!(argv[2], "cd \"$1\" && shift && exec env \"$@\"");
         assert_eq!(argv[4], docker_path(INPUT_ROOT, cwd));
-        assert_eq!(&argv[5..], ["env", "cargo", "fetch"]);
+        assert_eq!(
+            &argv[5..],
+            [
+                "env",
+                "/bin/sh",
+                "-eu",
+                "-c",
+                "environment=\"$(/usr/local/bin/mise -C /etc/ayni env -s bash)\"; eval \"$environment\"; exec \"$@\"",
+                "ayni-preparation-activate",
+                "cargo",
+                "fetch",
+            ]
+        );
     }
 
     #[test]

@@ -22,6 +22,7 @@ pub const MAX_PROTECTED_MANIFEST_ENTRIES: usize = 1_000_000;
 pub const PROTECTED_FILE_ROOTS: &[&str] = &[
     "/etc/ayni/mise.toml",
     "/usr/local/bin/ayni",
+    "/usr/local/bin/ayni-entrypoint",
     "/usr/local/bin/mise",
 ];
 pub const PROTECTED_TREE_ROOTS: &[&str] = &[
@@ -546,6 +547,7 @@ mod tests {
         files.extend(file(1, "/opt/ayni/mise/installs/rust/bin/rustc"));
         files.extend(file(4, "/etc/ayni/mise.toml"));
         files.extend(file(2, "/usr/local/bin/ayni"));
+        files.extend(file(5, "/usr/local/bin/ayni-entrypoint"));
         let links = b"/opt/ayni/mise/shims/rustc\0../bin/mise\0".to_vec();
         (files, links)
     }
@@ -556,6 +558,7 @@ mod tests {
         let first = manifest_from_inventory(&files, &links).unwrap();
 
         let mut reordered = file(2, "/usr/local/bin/ayni");
+        reordered.extend(file(5, "/usr/local/bin/ayni-entrypoint"));
         reordered.extend(file(4, "/etc/ayni/mise.toml"));
         reordered.extend(file(3, "/usr/local/bin/mise"));
         reordered.extend(file(1, "/opt/ayni/mise/installs/rust/bin/rustc"));

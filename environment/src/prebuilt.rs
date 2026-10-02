@@ -617,6 +617,7 @@ mod tests {
         let files = [
             ("/etc/ayni/mise.toml", b"[tools]\n".as_slice()),
             ("/usr/local/bin/ayni", b"ayni".as_slice()),
+            ("/usr/local/bin/ayni-entrypoint", b"entrypoint".as_slice()),
             ("/usr/local/bin/mise", b"mise".as_slice()),
             (
                 "/opt/ayni/mise/installs/rust/bin/rustc",

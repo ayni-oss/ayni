@@ -55,7 +55,7 @@ ENV HOME=/home/ayni \
     RUSTUP_HOME=/home/ayni/.rustup \
     CARGO_HOME=/home/ayni/.cache/cargo \
     npm_config_cache=/home/ayni/.cache/npm \
-    PATH=/opt/ayni/mise/shims:/usr/local/bin:/usr/bin:/bin
+    PATH=/usr/local/bin:/usr/bin:/bin
 
 USER 10001:10001
 WORKDIR /workspace

@@ -21,9 +21,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+const IMAGE_ENTRYPOINT: &str = include_str!("entrypoint.sh");
 const FILE_INVENTORY_SCRIPT: &str = r#"
 set -eu
-for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
+for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/ayni-entrypoint /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
 done
 for root in @PROTECTED_ROOTS@; do
@@ -43,7 +44,7 @@ LC_ALL=C /usr/bin/sort -z "$file_list" -o "$sorted_list"
 "#;
 const SYMLINK_INVENTORY_SCRIPT: &str = r#"
 set -eu
-for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/mise /opt/ayni/mise; do
+for required in /etc/ayni/mise.toml /usr/local/bin/ayni /usr/local/bin/ayni-entrypoint /usr/local/bin/mise /opt/ayni/mise; do
     [ -e "$required" ] || { echo "missing protected content: $required" >&2; exit 1; }
 done
 for root in @PROTECTED_ROOTS@; do
@@ -542,6 +543,9 @@ impl BuildInput {
                         .and_then(|()| {
                             write_new_file(&path.join("runtime-mise.toml"), &plan.runtime_mise_toml)
                         })
+                        .and_then(|()| {
+                            write_new_file(&path.join("entrypoint.sh"), IMAGE_ENTRYPOINT)
+                        })
                     {
                         let _ = fs::remove_dir_all(&path);
                         return Err(BackendError::execution(format!(
@@ -943,6 +947,14 @@ mod cache_tests {
         for command in ["/usr/bin/find", "/usr/bin/sort", "/usr/bin/xargs"] {
             assert!(FILE_INVENTORY_SCRIPT.contains(command));
         }
+    }
+
+    #[test]
+    fn image_entrypoint_activates_only_the_protected_mise_configuration() {
+        assert!(IMAGE_ENTRYPOINT.contains("mise -C /etc/ayni env -s bash"));
+        assert!(IMAGE_ENTRYPOINT.contains("AYNI_RUNTIME_CARGO_HOME"));
+        assert!(!IMAGE_ENTRYPOINT.contains("MISE_CONFIG_FILE"));
+        assert!(!IMAGE_ENTRYPOINT.contains("mise exec"));
     }
 
     #[test]
