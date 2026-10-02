@@ -218,9 +218,51 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+      packages: write
     uses: ./.github/workflows/release-publication.yml
     with:
       tag: ${{ needs.release.outputs.release_tag }}
       version: ${{ needs.release.outputs.release_version }}
       commit: ${{ needs.release.outputs.release_commit }}
     secrets: inherit
+
+  release-completion:
+    name: Verify published release
+    needs: [release, publication]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout workflow helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify release assets and executor are public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CREATED: ${{ needs.release.outputs.release_created }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+          PUBLICATION_RESULT: ${{ needs.publication.result }}
+          TAG: ${{ needs.release.outputs.release_tag }}
+          EXPECTED_COMMIT: ${{ needs.release.outputs.release_commit }}
+          EXECUTOR_IMAGE: ${{ needs.publication.outputs.executor_image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_CREATED" != "true" ]]; then
+            test "$RELEASE_RESULT" = "success"
+            test "$PUBLICATION_RESULT" = "skipped"
+            exit 0
+          fi
+          test "$RELEASE_RESULT" = "success"
+          test "$PUBLICATION_RESULT" = "success"
+          test -n "$TAG"
+          test -n "$EXPECTED_COMMIT"
+          test -n "$EXECUTOR_IMAGE"
+          test "$(python3 scripts/ci/release_artifacts.py source --tag "$TAG")" = "$EXPECTED_COMMIT"
+          python3 scripts/ci/release_artifacts.py verify --tag "$TAG" --directory release-assets
+          docker logout ghcr.io || true
+          docker buildx imagetools inspect "$EXECUTOR_IMAGE"
+          docker pull --platform linux/amd64 "$EXECUTOR_IMAGE"

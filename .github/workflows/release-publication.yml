@@ -12,6 +12,10 @@ on:
       commit:
         required: true
         type: string
+    outputs:
+      executor_image:
+        description: Immutable, public release executor identity
+        value: ${{ jobs.executor-manifest.outputs.executor_image }}
 
 permissions:
   contents: read
@@ -145,3 +149,115 @@ jobs:
           TAG: ${{ inputs.tag }}
           EXPECTED_COMMIT: ${{ inputs.commit }}
         run: python3 scripts/ci/release_artifacts.py upload --tag "$TAG" --expected-source "$EXPECTED_COMMIT" --directory dist
+
+  executor:
+    name: Publish release executor (${{ matrix.platform }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux/amd64
+            target: x86_64-unknown-linux-gnu
+            suffix: amd64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+            target: aarch64-unknown-linux-gnu
+            suffix: arm64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
+
+      - name: Download matching Linux archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-${{ matrix.target }}
+          path: release
+
+      - name: Build and validate architecture executor
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-${{ matrix.suffix }}
+          PLATFORM: ${{ matrix.platform }}
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ matrix.target }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_COMMIT: ${{ inputs.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/docker/ayni-env.versions
+          archive="release/ayni-${TAG}-${TARGET}.tar.gz"
+          test -f "$archive"
+          mkdir executor
+          tar -xzf "$archive" -C executor
+          cp "executor/ayni-${TAG}-${TARGET}/ayni" executor/ayni
+          cp "executor/ayni-${TAG}-${TARGET}/LICENSE" executor/LICENSE
+          docker build --provenance=false --platform "$PLATFORM" \
+            --build-arg "DEBIAN_IMAGE=$DEBIAN_IMAGE" \
+            --build-arg "AYNI_VERSION=$EXPECTED_VERSION" \
+            --build-arg "SOURCE_REVISION=$EXPECTED_COMMIT" \
+            --file .github/docker/ayni-candidate.Dockerfile --tag "$IMAGE" executor
+          test "$(docker run --rm --platform "$PLATFORM" "$IMAGE" /usr/local/bin/ayni --version)" = "ayni ${EXPECTED_VERSION}"
+          labels="$(docker image inspect "$IMAGE" --format '{{json .Config.Labels}}')"
+          test "$(jq --raw-output '.\"org.opencontainers.image.revision\"' <<<"$labels")" = "$EXPECTED_COMMIT"
+          test "$(jq --raw-output '.\"org.opencontainers.image.version\"' <<<"$labels")" = "$EXPECTED_VERSION"
+          test "$(jq --raw-output '.\"dev.ayni.executor.lock-schema\"' <<<"$labels")" = "0.9.0"
+          test "$(jq --raw-output '.\"dev.ayni.executor.recipe\"' <<<"$labels")" = "2"
+
+      - name: Publish architecture executor
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-${{ matrix.suffix }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE"
+
+  executor-manifest:
+    name: Publish immutable release executor
+    needs: executor
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      executor_image: ${{ steps.publish.outputs.executor_image }}
+
+    steps:
+      - name: Publish and validate public multi-architecture executor
+        id: publish
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian
+          AMD64_IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-amd64
+          ARM64_IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-arm64
+          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_COMMIT: ${{ inputs.commit }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create --tag "$IMAGE" "$AMD64_IMAGE" "$ARM64_IMAGE"
+          manifest="$(docker buildx imagetools inspect "$IMAGE" --raw)"
+          test "$(jq '[.manifests[] | .platform.os + "/" + .platform.architecture] | sort' <<<"$manifest")" = '["linux/amd64","linux/arm64"]'
+          digest="$(docker buildx imagetools inspect "$IMAGE" --format '{{.Digest}}')"
+          test "$digest" != ""
+          docker logout ghcr.io || true
+          docker pull --platform linux/amd64 "$IMAGE@$digest"
+          test "$(docker run --rm --platform linux/amd64 "$IMAGE@$digest" /usr/local/bin/ayni --version)" = "ayni ${EXPECTED_VERSION}"
+          labels="$(docker image inspect "$IMAGE@$digest" --format '{{json .Config.Labels}}')"
+          test "$(jq --raw-output '.\"org.opencontainers.image.revision\"' <<<"$labels")" = "$EXPECTED_COMMIT"
+          test "$(jq --raw-output '.\"org.opencontainers.image.version\"' <<<"$labels")" = "$EXPECTED_VERSION"
+          test "$(jq --raw-output '.\"dev.ayni.executor.lock-schema\"' <<<"$labels")" = "0.9.0"
+          test "$(jq --raw-output '.\"dev.ayni.executor.recipe\"' <<<"$labels")" = "2"
+          echo "executor_image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"

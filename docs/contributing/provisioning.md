@@ -46,7 +46,10 @@ workflow intentionally represents only the repository's declared Ayni contract.
 `.github/workflows/release.yml` uses Release Please on `main` and supports manual
 recovery for an existing release tag. When a release is created or selected, it
 calls `.github/workflows/release-publication.yml` to build the supported macOS
-and Linux CLI archives, attest them, generate checksums, and upload the assets.
+and Linux CLI archives, attest them, generate checksums, upload the assets, and
+publish `ghcr.io/ayni-oss/ayni-env:<version>-debian` for Linux amd64 and arm64.
+The executor tag is validated anonymously and its digest is the immutable
+identity Ayni records in an environment build.
 
 Release publication uses immutable tagged source and remains recoverable for an
 existing public release. The archive naming contract is
