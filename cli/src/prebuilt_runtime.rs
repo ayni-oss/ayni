@@ -7,7 +7,7 @@ use crate::application::{EnvShowOperation, OutputFormat};
 use crate::application_error::ApplicationError;
 use ayni_core::{ArtifactToolVersion, Language};
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Debug)]
@@ -28,29 +28,19 @@ pub(crate) fn current() -> Option<Context> {
     context_slot().lock().expect("runtime context lock").clone()
 }
 
-/// Resolves an explicit checkout-location hint supplied by an image launcher.
-/// The hint has no bearing on whether an environment is trusted: runtime
-/// provenance is established solely by the root-owned metadata marker.
-pub(crate) fn resolve_config(config: &Path) -> PathBuf {
-    let Some(root) = std::env::var_os("AYNI_SOURCE_ROOT").filter(|value| !value.is_empty()) else {
-        return config.into();
-    };
-    if config.is_relative()
-        && std::fs::symlink_metadata(ayni_environment::prebuilt::METADATA_PATH).is_ok()
-    {
-        Path::new(&root).join(config)
-    } else {
-        config.into()
-    }
-}
-
 pub(crate) fn activate(config: &Path) -> Result<(), ApplicationError> {
-    let config = resolve_config(config);
     let root = config
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let Some((runtime, lock)) = verify_with_lock(root)? else {
+        .unwrap_or(Path::new("."))
+        .canonicalize()
+        .map_err(|error| {
+            ApplicationError::input(format!(
+                "failed to resolve checkout root for {}: {error}",
+                config.display()
+            ))
+        })?;
+    let Some((runtime, lock)) = verify_with_lock(&root)? else {
         *context_slot().lock().expect("runtime context lock") = None;
         return Ok(());
     };

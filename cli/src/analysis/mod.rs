@@ -21,7 +21,7 @@ use artifacts::build_artifact_metadata;
 pub(crate) use artifacts::{
     SIGNALS_ARTIFACT, VERIFY_SIGNALS_ARTIFACT, build_artifact_metadata_for_command,
     emit_analyze_outputs, invalidate_artifact_at, persist_artifact_at, serialize_artifact,
-    source_fingerprint, source_fingerprint_excluding, workspace_root_from_config_path,
+    workspace_root_from_config_path,
 };
 pub(crate) use check::analyze;
 pub(crate) use execution::AnalyzeOptions;

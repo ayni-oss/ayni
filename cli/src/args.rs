@@ -498,10 +498,6 @@ impl ImpactShowOptions {
             base: self.base,
             output: self.output.into(),
             debug: false,
-            execution_mode: ayni_core::ExecutionMode::Host,
-            authorization: Default::default(),
-            managed_handoff: None,
-            managed_result: None,
         }
     }
 }

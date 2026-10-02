@@ -81,12 +81,11 @@ fn dispatch_analysis(operation: application::Operation) -> ExitCode {
 }
 
 fn dispatch_check(operation: application::CheckOperation) -> ExitCode {
-    let config = prebuilt_runtime::resolve_config(&operation.config);
-    if let Err(error) = prebuilt_runtime::activate(&config) {
+    if let Err(error) = prebuilt_runtime::activate(&operation.config) {
         return crate::application_error::render_error(error);
     }
     match analyze(
-        config.to_string_lossy().as_ref(),
+        operation.config.to_string_lossy().as_ref(),
         AnalyzeOptions {
             output_mode: output_arg(operation.output),
             debug: operation.debug,
@@ -98,8 +97,6 @@ fn dispatch_check(operation: application::CheckOperation) -> ExitCode {
 }
 
 fn dispatch_verify(operation: application::VerifyOperation) -> ExitCode {
-    let mut operation = operation;
-    operation.config = prebuilt_runtime::resolve_config(&operation.config);
     if let Err(error) = prebuilt_runtime::activate(&operation.config) {
         return crate::application_error::render_error(error);
     }
@@ -107,8 +104,6 @@ fn dispatch_verify(operation: application::VerifyOperation) -> ExitCode {
 }
 
 fn dispatch_impact(operation: application::ImpactOperation) -> ExitCode {
-    let mut operation = operation;
-    operation.config = prebuilt_runtime::resolve_config(&operation.config);
     if let Err(error) = prebuilt_runtime::activate(&operation.config) {
         return crate::application_error::render_error(error);
     }

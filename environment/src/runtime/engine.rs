@@ -12,7 +12,7 @@ use crate::{
     BackendError, concise_output, read_lock, run_oci_command, run_oci_command_streaming_truncated,
 };
 use ayni_adapters_common::exec::DEFAULT_TOOL_TIMEOUT;
-use ayni_core::{DependencyPreparationPlan, EnvironmentLock, Language};
+use ayni_core::{DependencyPreparationPlan, EnvironmentLock};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
@@ -65,12 +65,6 @@ fn inventory_script(template: &str) -> String {
 pub enum Engine {
     Docker,
     Podman,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct TargetSelection {
-    pub language: Option<Language>,
-    pub root: Option<String>,
 }
 
 /// Operator-selected cache transport. Cache locations are never lock inputs.
@@ -170,106 +164,11 @@ pub fn doctor_prepared(
     let lock = read_lock(&root)?;
     let engine = detect_engine()?;
     let plan = current_image_plan(&root, engine, &lock, preparations)?;
-    super::validate_runtime_capabilities(engine, lock.capabilities())?;
-    let security = engine_security_posture(&root, engine);
-    let resources = lock.resource_limits();
-    let capabilities = lock.capabilities();
     Ok(format!(
-        "environment ready: {} ({})\nsecurity posture: {security}\nconfigured resource ceilings: cpus={} memory={}MiB memory+swap={}MiB pids={} nofile={}\nruntime capabilities: docker={:?} network={:?}",
+        "environment image is current: {} ({})",
         plan.tag,
         engine_name(engine),
-        resources.cpus,
-        resources.memory_mib,
-        resources.memory_swap_mib,
-        resources.pids,
-        resources.nofile,
-        capabilities.docker,
-        capabilities.network,
     ))
-}
-
-fn engine_security_posture(root: &Path, engine: Engine) -> String {
-    match engine {
-        Engine::Docker => docker_security_posture(root),
-        Engine::Podman => podman_security_posture(root),
-    }
-}
-
-fn docker_security_posture(root: &Path) -> String {
-    let args = [
-        String::from("info"),
-        String::from("--format"),
-        String::from("{{json .SecurityOptions}}"),
-    ];
-    let Ok(output) = run_oci_command(root, "docker", &args, COMMAND_TIMEOUT) else {
-        return String::from("unavailable");
-    };
-    if !output.status.success() {
-        return String::from("unavailable");
-    }
-    let Ok(options) = serde_json::from_slice::<Vec<String>>(&output.stdout) else {
-        return String::from("unavailable");
-    };
-    let enabled = |name: &str| options.iter().any(|option| option.contains(name));
-    format!(
-        "rootless={} seccomp={} apparmor={} selinux={}",
-        yes_no(enabled("rootless")),
-        yes_no(enabled("seccomp")),
-        yes_no(enabled("apparmor")),
-        yes_no(enabled("selinux")),
-    )
-}
-
-fn podman_security_posture(root: &Path) -> String {
-    let args = [
-        String::from("info"),
-        String::from("--format"),
-        String::from("json"),
-    ];
-    let Ok(output) = run_oci_command(root, "podman", &args, COMMAND_TIMEOUT) else {
-        return String::from("unavailable");
-    };
-    if !output.status.success() {
-        return String::from("unavailable");
-    }
-    let Ok(info) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
-        return String::from("unavailable");
-    };
-    format!(
-        "rootless={} seccomp={} apparmor={} selinux={}",
-        bool_status(find_json_bool(&info, "rootless")),
-        bool_status(find_json_bool(&info, "seccompenabled")),
-        bool_status(find_json_bool(&info, "apparmorenabled")),
-        bool_status(find_json_bool(&info, "selinuxenabled")),
-    )
-}
-
-fn find_json_bool(value: &serde_json::Value, requested: &str) -> Option<bool> {
-    match value {
-        serde_json::Value::Object(entries) => entries.iter().find_map(|(key, value)| {
-            if key.replace(['_', '-'], "").eq_ignore_ascii_case(requested) {
-                value.as_bool()
-            } else {
-                find_json_bool(value, requested)
-            }
-        }),
-        serde_json::Value::Array(values) => values
-            .iter()
-            .find_map(|value| find_json_bool(value, requested)),
-        _ => None,
-    }
-}
-
-const fn yes_no(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
-}
-
-const fn bool_status(value: Option<bool>) -> &'static str {
-    match value {
-        Some(true) => "yes",
-        Some(false) => "no",
-        None => "unknown",
-    }
 }
 
 pub fn build(repo_root: &Path) -> Result<String, BackendError> {

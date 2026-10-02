@@ -1,14 +1,6 @@
 use ayni_core::{Language, SignalKind};
 use std::path::PathBuf;
 
-// Internal carrier retained only by the legacy impact handoff code. It is not
-// part of the command-line interface.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CapabilityAuthorization {
-    pub allow_network: bool,
-    pub allow_docker_socket: bool,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OutputFormat {
     Human,
@@ -114,10 +106,6 @@ pub(crate) struct ImpactOperation {
     pub base: String,
     pub output: OutputFormat,
     pub debug: bool,
-    pub execution_mode: ayni_core::ExecutionMode,
-    pub authorization: CapabilityAuthorization,
-    pub managed_handoff: Option<PathBuf>,
-    pub managed_result: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

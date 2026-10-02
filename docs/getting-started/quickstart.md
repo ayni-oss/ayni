@@ -156,8 +156,7 @@ native dependency declarations automatically.
 ## Run in a built image
 
 Images default to `/bin/sh`. Attach the checkout at the location your platform
-uses, set `AYNI_SOURCE_ROOT` only when an explicit config path must be resolved
-from that checkout, and run native development commands or `ayni check`.
+uses, then run native development commands or `ayni check` from that checkout.
 
 ## What to read next
 

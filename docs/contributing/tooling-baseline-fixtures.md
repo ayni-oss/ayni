@@ -34,7 +34,7 @@ cp -R adapters/python/tests/fixtures/tooling/mutmut/. "$fixture/"
 uv venv --python 3.12 "$fixture/.venv"
 uv pip install --python "$fixture/.venv/bin/python" 'mutmut==2.5.1' 'pytest==9.0.3'
 PATH="$fixture/.venv/bin:$PATH" cargo run -p ayni-cli -- verify mutation \
-  --host --language python --config "$fixture/.ayni.toml"
+  --language python --config "$fixture/.ayni.toml"
 ```
 
 Expect `killed=2 survived=0 timeout=0`. The temporary project uses the host
@@ -52,9 +52,9 @@ cp -R adapters/kotlin/tests/fixtures/tooling/gradle/. "$fixture/"
 cp examples/kotlin/mono/gradlew "$fixture/gradlew"
 mkdir -p "$fixture/gradle"
 cp -R examples/kotlin/mono/gradle/wrapper "$fixture/gradle/wrapper"
-cargo run -p ayni-cli -- verify coverage --host --language kotlin \
+cargo run -p ayni-cli -- verify coverage --language kotlin \
   --config "$fixture/.ayni.toml"
-cargo run -p ayni-cli -- verify mutation --host --language kotlin \
+cargo run -p ayni-cli -- verify mutation --language kotlin \
   --config "$fixture/.ayni.toml"
 ```
 

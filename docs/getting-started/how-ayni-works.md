@@ -79,19 +79,13 @@ Ayni does not silently lock or rebuild during a quality run. Changes to versions
 
 The command chooses scope; Ayni and the adapter choose the exact signal command.
 
-| Command | Scope | Default runtime |
+| Command | Scope | Execution environment |
 | --- | --- | --- |
-| `ayni check` | Every enabled signal across all configured targets | Managed |
-| `ayni verify <signal>` | One signal, optionally narrowed to a language, root, file, package, or test | Managed |
-| `ayni impact run --base <revision>` | Quality work affected by an explicit Git change | Managed |
+| `ayni check` | Every enabled signal across all configured targets | Current workspace |
+| `ayni verify <signal>` | One signal, optionally narrowed to a language, root, file, package, or test | Current workspace |
+| `ayni impact run --base <revision>` | Quality work affected by an explicit Git change | Current workspace |
 
-At launch, Ayni validates the current lock and image, selects the language target, mounts the checkout, runs the adapter command, parses its output, applies the contract thresholds, and writes normalized evidence.
-
-CI uses these commands with their managed default. During development, use the explicit `--host` option (for example, `ayni check --host`) so the checkout runs with its locally installed tools. Host execution preserves the contract and evidence model but relies on user-installed tools.
-
-## Advanced development access is different
-
-`ayni env run` and `ayni env shell` are optional development tools, not part of setup or the quality loop. They add no signal semantics and intentionally expose the checkout read-write. Run `ayni check`, `verify`, and `impact run` directly; each already owns its managed launch.
+Before collecting, Ayni verifies image metadata when it is present, selects the language target, runs the adapter command, parses its output, applies contract thresholds, and writes normalized evidence. Without image metadata it uses locally installed tools and reports actionable setup failures.
 
 ## The reviewable repository boundary
 

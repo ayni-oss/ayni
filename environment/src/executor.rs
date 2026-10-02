@@ -549,6 +549,9 @@ mod tests {
         );
         let mut malformed_certificate = record;
         malformed_certificate.schema_version = RECORD_SCHEMA.into();
+        malformed_certificate.recipe_version = RECIPE_VERSION.into();
+        malformed_certificate.certificate_schema_version =
+            ayni_core::ENVIRONMENT_CERTIFICATE_SCHEMA_VERSION.into();
         malformed_certificate.protected_content_root = "not-a-digest".into();
         fs::write(&path, serde_json::to_vec(&malformed_certificate).unwrap()).unwrap();
         assert!(

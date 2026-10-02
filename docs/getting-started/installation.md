@@ -123,14 +123,14 @@ ayni --version
 ayni --help
 ```
 
-Installing the CLI does **not** install every language tool used by a repository. For reproducible execution, Ayni derives and builds a managed environment after the repository has an `.ayni.toml` and `.ayni.lock`.
+Installing the CLI does **not** install every language tool used by a repository. For reproducible execution, Ayni derives and builds an image after the repository has an `.ayni.toml` and `.ayni.lock`.
 
-## Managed-environment prerequisites
+## Environment-image prerequisites
 
-To use managed execution:
+To build an image:
 
 - install Docker with Buildx for first-build release executor resolution;
-- keep Docker running, or use compatible Podman support for commands that consume an existing lock;
+- keep Docker running, or use compatible Podman support for image operations;
 - install [Mise](https://mise.jdx.dev/), which is required and version-recorded for every `ayni env lock`; and
 - commit the native project metadata and dependency locks required by each language adapter.
 

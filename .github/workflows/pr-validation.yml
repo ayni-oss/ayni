@@ -12,76 +12,18 @@ permissions: {}
 
 jobs:
   metadata:
-    name: conventional title and label
+    name: Conventional title
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
     permissions:
-      issues: write
-      pull-requests: write
+      pull-requests: read
     steps:
-      - name: Validate title and apply kind label
+      - name: Validate title
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const title = context.payload.pull_request.title.trim();
             const pattern = /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\(([a-z0-9][a-z0-9._/-]*)\))?(!)?: \S(?:.*\S)?$/;
-            const match = title.match(pattern);
-            const managed = [
-              "kind/bug",
-              "kind/chore",
-              "kind/documentation",
-              "kind/feature",
-              "kind/security",
-            ];
-            const current = await github.paginate(
-              github.rest.issues.listLabelsOnIssue,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                per_page: 100,
-              },
-            );
-            const currentNames = new Set(current.map(({ name }) => name));
-
-            let desired = null;
-            if (match) {
-              const [, type, scope = ""] = match;
-              const scopeRoot = scope.split(/[./]/, 1)[0];
-              if (scopeRoot === "security") {
-                desired = "kind/security";
-              } else if (type === "docs" || scopeRoot === "docs") {
-                desired = "kind/documentation";
-              } else if (type === "feat" || type === "perf") {
-                desired = "kind/feature";
-              } else if (type === "fix") {
-                desired = "kind/bug";
-              } else {
-                desired = "kind/chore";
-              }
-            }
-
-            for (const label of managed) {
-              if (label !== desired && currentNames.has(label)) {
-                await github.rest.issues.removeLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.issue.number,
-                  name: label,
-                });
-              }
-            }
-
-            if (desired && !currentNames.has(desired)) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                labels: [desired],
-              });
-            }
-
-            if (!match) {
+            if (!pattern.test(title)) {
               core.setFailed(`PR title must match Conventional Commits; received: ${title}`);
             }
 
@@ -91,15 +33,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout pull request
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-
-      - name: Verify required project files
-        run: |
+      - run: |
           test -f SECURITY.md
           test -f CONTRIBUTING.md
           test -f CODE_OF_CONDUCT.md
@@ -108,27 +47,25 @@ jobs:
           test -f ROADMAP.md
           test -f .github/dco.yml
 
-  ayni:
-    name: Ayni
+  quality:
+    name: Repository and environment checks
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
     steps:
-      - name: Initialize report
-        run: printf 'Ayni did not produce a report. See the workflow log for details.\n' > "$RUNNER_TEMP/ayni.md"
-
-      - name: Checkout pull request
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
-
-      - name: Build and import checkout Ayni candidate
+      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
+      - name: Validate the repository
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo test --workspace --all-features
+      - name: Build the PR CLI and executor
         id: candidate
         env:
           PLATFORM: linux/amd64
@@ -138,105 +75,37 @@ jobs:
           scripts/ci/build-candidate.sh .ayni/ci-candidate "$PLATFORM"
           docker run --detach --rm --name ayni-local-registry --publish 127.0.0.1:5000:5000 registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null; then break; fi
+            curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null && break
             sleep 1
           done
-          curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null
           python3 scripts/ci/candidate.py import --directory .ayni/ci-candidate --source "$SOURCE" --platform "$PLATFORM" --run-id "$GITHUB_RUN_ID"
-
-      - name: Verify certified prebuilt runtime
+      - name: Build and use the repository environment
+        env:
+          AYNI: ${{ steps.candidate.outputs.cli }}
+          EXECUTOR: ${{ steps.candidate.outputs.executor }}
         run: |
-          scripts/test-prebuilt-runtime.sh --examples \
-            --cli "${{ steps.candidate.outputs.cli }}" \
-            --executor "${{ steps.candidate.outputs.executor }}"
-
-      - name: Generate ephemeral environment signing material
-        run: |
-          signing_key=$(openssl rand -hex 32)
-          echo "::add-mask::$signing_key"
-          echo "AYNI_ENV_CERTIFICATE_SIGNING_KEY=$signing_key" >> "$GITHUB_ENV"
-          echo "AYNI_ENV_CERTIFICATE_KEY_ID=pr-validation-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
-
-      - name: Run Ayni
-        run: |
-          set +e
-          "${{ steps.candidate.outputs.cli }}" env build --repo-root . --executor-image "${{ steps.candidate.outputs.executor }}"
-          exit_code=$?
-          if [ "$exit_code" -eq 0 ]; then
-            "${{ steps.candidate.outputs.cli }}" env doctor --repo-root .
-            exit_code=$?
-          fi
-          if [ "$exit_code" -eq 0 ]; then
-            "${{ steps.candidate.outputs.cli }}" check --config .ayni.toml --output markdown > "$RUNNER_TEMP/ayni.md"
-            exit_code=$?
-          fi
-          exit "$exit_code"
-
-      - name: Retain report for PR feedback
+          set -euo pipefail
+          "$AYNI" env build --repo-root . --executor-image "$EXECUTOR"
+          image="$(jq --raw-output .image_tag .ayni/environment/build.json)"
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --env CARGO_TARGET_DIR=/tmp/target --mount "type=bind,source=$PWD,target=/workspace" --workdir /workspace --entrypoint /usr/local/bin/ayni "$image" check --config .ayni.toml --output markdown | tee "$RUNNER_TEMP/ayni.md"
+      - name: Upload Ayni evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ayni-pr-report
-          path: ${{ runner.temp }}/ayni.md
+          name: ayni-pr-evidence
+          path: |
+            .ayni/last/signals.json
+            ${{ runner.temp }}/ayni.md
+          if-no-files-found: warn
           retention-days: 1
-          if-no-files-found: error
 
-  report:
-    name: Ayni PR comment
-    needs: ayni
+  complete:
+    name: Required completion
     if: ${{ always() }}
+    needs: [metadata, cncf, quality]
     runs-on: ubuntu-24.04
-    permissions:
-      pull-requests: write
     steps:
-      - name: Download Ayni report
-        continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ayni-pr-report
-          path: ${{ runner.temp }}/ayni-report
-
-      - name: Create or update Ayni comment
-        if: ${{ always() }}
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          REPORT_PATH: ${{ runner.temp }}/ayni-report/ayni.md
-          AYNI_RESULT: ${{ needs.ayni.result }}
-        with:
-          script: |
-            const fs = require('fs');
-            const marker = '<!-- ayni-signals -->';
-            const result = process.env.AYNI_RESULT;
-            const status = result === 'success' ? 'passed' : result;
-            let report = 'Ayni did not produce a report. See the workflow log for details.\n';
-            if (fs.existsSync(process.env.REPORT_PATH)) {
-              report = fs.readFileSync(process.env.REPORT_PATH, 'utf8');
-            }
-            if (report.length > 60000) {
-              report = `${report.slice(0, 60000)}\n\n_Report truncated; see the workflow log for the full result._\n`;
-            }
-            const body = `${marker}\n## Ayni: ${status}\n\n${report}`;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              per_page: 100,
-            });
-            const existing = comments.find(
-              (comment) => comment.user?.type === 'Bot' && comment.body?.includes(marker),
-            );
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
+      - run: |
+          test '${{ needs.metadata.result }}' = success
+          test '${{ needs.cncf.result }}' = success
+          test '${{ needs.quality.result }}' = success

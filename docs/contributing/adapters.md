@@ -60,9 +60,8 @@ planning aggregates its contributions into a current repository plan. Explicit
 `env lock` performs exact resolution and persists that plan. Before a managed
 quality run, the CLI discovers the current requirements again and compares them
 with the lock; a difference fails as stale instead of changing the environment.
-The generic backend consumes a current lock and decides how managed execution is
-provisioned and launched. Adapter code must not contain backend-specific image,
-engine, mount, or cache logic.
+The generic backend consumes a current lock and builds the image. Adapter code
+must not contain backend-specific image, engine, mount, or cache logic.
 
 ## Dependency and ownership boundaries
 
@@ -205,9 +204,8 @@ backend consumes the declarations uniformly across all languages.
 
 The capability accessors are optional at the `LanguageAdapter` trait level so
 adapter support can be introduced incrementally. A language advertised for
-managed execution must provide the applicable discovery, exact-resolution, and
-dependency-preparation capabilities. Missing managed support fails explicitly;
-it must not trigger an implicit host fallback.
+an environment image must provide the applicable discovery, exact-resolution,
+and dependency-preparation capabilities. Missing support fails explicitly.
 
 Environment discovery is read-only. Resolution may consult the adapter's
 provider mechanism but must not modify repository files. Preparation commands
@@ -396,7 +394,7 @@ Before merging an adapter:
    preparation return valid core data without performing backend logistics.
 4. Run shared `adapters/common` conformance checks for environment, dependency
    preparation, and impact capabilities where implemented.
-5. Unscoped `ayni check` and its explicit `--host` escape hatch emit typed rows
+5. Unscoped `ayni check` emits typed rows
    for every enabled signal kind; only check writes repository-completion
    evidence.
 6. Each supported focused selector is faithfully applied; unsupported selectors

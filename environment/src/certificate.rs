@@ -44,7 +44,6 @@ pub const PROTECTED_ANCESTOR_DIRS: &[&str] = &[
 ];
 const SIGNING_KEY_ENV: &str = "AYNI_ENV_CERTIFICATE_SIGNING_KEY";
 const KEY_ID_ENV: &str = "AYNI_ENV_CERTIFICATE_KEY_ID";
-pub(crate) const SIGNING_ENVIRONMENT: &[&str] = &[SIGNING_KEY_ENV, KEY_ID_ENV];
 
 pub(crate) struct SigningMaterial {
     key_id: String,
