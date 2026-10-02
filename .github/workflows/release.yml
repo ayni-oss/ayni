@@ -27,6 +27,8 @@ jobs:
       release_tag: ${{ steps.release-metadata.outputs.tag }}
       release_version: ${{ steps.release-metadata.outputs.version }}
       release_commit: ${{ steps.release-source.outputs.commit }}
+      release_pr_available: ${{ steps.release-pr.outputs.available }}
+      release_pr_branch: ${{ steps.release-pr.outputs.branch }}
 
     steps:
       - name: Checkout workflow helpers
@@ -112,6 +114,92 @@ jobs:
             test "$sha" = "$TRIGGER_COMMIT"
           fi
           echo "commit=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release pull request branch
+        id: release-pr
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_PRS_CREATED: ${{ steps.release.outputs.prs_created }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=""
+          if [[ "$RELEASE_PRS_CREATED" == "true" ]]; then
+            branch="$(jq --raw-output '.[0].headBranchName // empty' <<<"$RELEASE_PRS")"
+          else
+            mapfile -t branches < <(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" \
+                --jq '.[] | select(.head.ref | startswith("release-please--")) | .head.ref'
+            )
+            test "${#branches[@]}" -le 1
+            branch="${branches[0]-}"
+          fi
+          if [[ -z "$branch" ]]; then
+            exit 0
+          fi
+          {
+            echo "available=true"
+            echo "branch=$branch"
+          } >> "$GITHUB_OUTPUT"
+
+  sync-release-lock:
+    name: Refresh release environment lock
+    needs: release
+    if: >-
+      ${{
+        always() &&
+        needs.release.result == 'success' &&
+        needs.release.outputs.release_pr_available == 'true'
+      }}
+    concurrency:
+      group: release-pr-maintenance
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Create release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout release pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release.outputs.release_pr_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
+
+      - name: Regenerate Ayni lock deterministically
+        run: |
+          set -euo pipefail
+          cargo run --locked -p ayni-cli -- env lock --repo-root .
+          cp .ayni.lock "$RUNNER_TEMP/release-lock.first"
+          cargo run --locked -p ayni-cli -- env lock --repo-root .
+          cmp "$RUNNER_TEMP/release-lock.first" .ayni.lock
+
+      - name: Commit Ayni lock
+        env:
+          BRANCH: ${{ needs.release.outputs.release_pr_branch }}
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- .ayni.lock; then
+            exit 0
+          fi
+          git config user.name "ayni-release[bot]"
+          git config user.email "282289292+ayni-release[bot]@users.noreply.github.com"
+          git add -- .ayni.lock
+          git commit -m "chore(release): refresh Ayni lock"
+          git push "https://x-access-token:$GIT_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:$BRANCH"
 
   publication:
     needs: release

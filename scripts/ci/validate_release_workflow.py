@@ -1,4 +1,4 @@
-"""Validate the intentionally small, source-bound release workflow."""
+"""Validate source-bound release and tagged documentation workflows."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
+DOCS_WORKFLOW = ROOT / ".github" / "workflows" / "docs.yml"
 JOB = re.compile(r"^  ([a-z][a-z0-9-]*):\n", re.MULTILINE)
 
 
@@ -28,11 +29,13 @@ def require(errors: list[str], condition: bool, message: str) -> None:
 
 def main() -> int:
     source = WORKFLOW.read_text()
+    docs = DOCS_WORKFLOW.read_text()
     publication = (WORKFLOW.parent / "release-publication.yml").read_text()
     errors: list[str] = []
 
     try:
         release = job_block(source, "release")
+        sync_lock = job_block(source, "sync-release-lock")
         caller = job_block(source, "publication")
         build = job_block(publication, "build")
         publish = job_block(publication, "publish")
@@ -40,7 +43,7 @@ def main() -> int:
         print(error, file=sys.stderr)
         return 1
 
-    for removed_job in ("sync-release-lock", "release-completion"):
+    for removed_job in ("release-completion",):
         require(errors, f"  {removed_job}:\n" not in source,
                 f"release workflow must not retain {removed_job}")
     for removed_job in (
@@ -61,6 +64,20 @@ def main() -> int:
             and 'echo "tag=$TAG"' in release
             and 'echo "version=$VERSION"' in release,
             "release metadata must emit explicit publication inputs")
+    require(errors,
+            "release_pr_available: ${{ steps.release-pr.outputs.available }}" in release
+            and "release_pr_branch: ${{ steps.release-pr.outputs.branch }}" in release
+            and "id: release-pr" in release
+            and 'echo "branch=$branch"' in release,
+            "release metadata must expose an available release pull-request branch")
+    require(errors,
+            "needs: release" in sync_lock
+            and "needs.release.outputs.release_pr_available == 'true'" in sync_lock
+            and "release-pr-maintenance" in sync_lock
+            and "cargo run --locked -p ayni-cli -- env lock --repo-root ." in sync_lock
+            and 'cmp "$RUNNER_TEMP/release-lock.first" .ayni.lock' in sync_lock
+            and 'git commit -m "chore(release): refresh Ayni lock"' in sync_lock,
+            "an available release pull request must receive one deterministic Ayni-lock refresh")
     require(errors,
             'if: ${{ needs.release.outputs.release_created == \'true\' }}' in caller
             and 'release-publication-${{ needs.release.outputs.release_tag }}' in caller
@@ -84,6 +101,18 @@ def main() -> int:
             and "GH_TOKEN: ${{ steps.publication-token.outputs.token }}" in publish
             and 'release_artifacts.py upload --tag "$TAG" --expected-source "$EXPECTED_COMMIT"' in publish,
             "publication must use a fresh app token and source-bound overwrite helper")
+    require(errors,
+            "tags:\n      - 'ayni-v*'" in docs
+            and "branches:" not in docs
+            and "cargo doc-cli > docs/cli.md" in docs
+            and "npm ci" in docs
+            and "npm run docs:build" in docs
+            and "VITEPRESS_BASE: /" in docs
+            and "actions/upload-pages-artifact@" in docs
+            and "actions/deploy-pages@" in docs
+            and "pages: write" in docs
+            and "id-token: write" in docs,
+            "documentation must build and deploy only tagged release source")
 
     if errors:
         print("\n".join(errors), file=sys.stderr)
