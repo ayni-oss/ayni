@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.0...ayni-v0.14.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **release:** publish versioned executor images ([#52](https://github.com/ayni-oss/ayni/issues/52)) ([9276782](https://github.com/ayni-oss/ayni/commit/92767828fac80f47334eb5380da5787437b865f8))
+
 ## [0.14.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.13.0...ayni-v0.14.0) (2026-10-02)
 
 
