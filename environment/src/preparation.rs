@@ -65,7 +65,7 @@ for link do
             "$source_root"|"$source_root"/*)
                 relocated="$seed_root${resolved#"$source_root"}"
                 relative=$(/usr/bin/realpath -ms --relative-to="${link%/*}" -- "$relocated")
-                /bin/ln -snf -- "$relative" "$link"
+                /bin/ln -snfT -- "$relative" "$link"
                 break
                 ;;
         esac
@@ -532,13 +532,15 @@ mod tests {
         let root_seed = seeds.join("root");
         let member_seed = seeds.join("member");
         fs::create_dir_all(root_seed.join(".pnpm/axe-core")).unwrap();
-        fs::create_dir_all(&member_seed).unwrap();
+        fs::create_dir_all(member_seed.join("local-store")).unwrap();
         fs::write(root_seed.join(".pnpm/axe-core/data"), "dependency").unwrap();
+        fs::write(member_seed.join("local-store/data"), "local dependency").unwrap();
         symlink(
             "../../../node_modules/.pnpm/axe-core",
             member_seed.join("@axe-core"),
         )
         .unwrap();
+        symlink("local-store", member_seed.join("internal")).unwrap();
 
         let status = std::process::Command::new("/bin/sh")
             .args([
@@ -554,6 +556,7 @@ mod tests {
                 member_seed.to_str().unwrap(),
                 "--",
                 member_seed.join("@axe-core").to_str().unwrap(),
+                member_seed.join("internal").to_str().unwrap(),
             ])
             .status()
             .unwrap();
@@ -565,6 +568,14 @@ mod tests {
         assert_eq!(
             fs::read_link(member_seed.join("@axe-core")).unwrap(),
             Path::new("../root/.pnpm/axe-core")
+        );
+        assert_eq!(
+            fs::read_to_string(member_seed.join("internal/data")).unwrap(),
+            "local dependency"
+        );
+        assert_eq!(
+            fs::read_link(member_seed.join("internal")).unwrap(),
+            Path::new("local-store")
         );
     }
 
