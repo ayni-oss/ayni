@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 pub(crate) const INPUT_ROOT: &str = "/tmp/ayni/repository";
 pub(crate) const SEED_ROOT: &str = "/opt/ayni/dependencies";
 pub(crate) const CACHE_SEED_ROOT: &str = "/opt/ayni/cache-seed";
-const PREPARATION_IMPLEMENTATION_VERSION: &str = "12";
+const PREPARATION_IMPLEMENTATION_VERSION: &str = "13";
 
 // Package-manager caches can contain absolute links into their build-time home.
 // Keep internal links relocatable when the seed is copied into a disposable cache.
@@ -391,12 +391,14 @@ fn preparation_run_instruction(
 }
 
 fn prepared_output_copy_instruction(output: &PreparationOutput) -> String {
+    // Relocation runs as the unprivileged build user. The final image stage
+    // freezes these trees as root-owned protected content before certification.
     let paths = [
         docker_path(INPUT_ROOT, &output.path),
         format!("{SEED_ROOT}/{}", output_key(output)),
     ];
     format!(
-        "COPY --from=ayni-preparation {}",
+        "COPY --from=ayni-preparation --chown=10001:10001 {}",
         serde_json::to_string(&paths).expect("copy path serialization")
     )
 }
@@ -628,11 +630,62 @@ mod tests {
         assert!(!instruction.contains(['\n', '\r', '\t']));
         let paths = serde_json::from_str::<Vec<String>>(
             instruction
-                .strip_prefix("COPY --from=ayni-preparation ")
+                .strip_prefix("COPY --from=ayni-preparation --chown=10001:10001 ")
                 .expect("COPY instruction"),
         )
         .expect("JSON-form COPY");
         assert_eq!(paths[0], docker_path(INPUT_ROOT, path));
         assert_eq!(paths[1], format!("{SEED_ROOT}/{}", output_key(&output)));
+    }
+
+    #[test]
+    #[ignore = "requires Docker and AYNI_TEST_PROVISIONING_BASE"]
+    fn copied_seed_links_are_rewritable_before_final_protection() {
+        let base = std::env::var("AYNI_TEST_PROVISIONING_BASE").expect("pinned test base");
+        let outputs =
+            ["node_modules", "packages/example/node_modules"].map(|path| PreparationOutput {
+                path: path.into(),
+                mount_path: path.into(),
+                mode: PreparationOutputMode::Seeded,
+            });
+        let member_seed = format!("{SEED_ROOT}/{}", output_key(&outputs[1]));
+        let mut dockerfile = format!(
+            "FROM {base} AS ayni-preparation\nUSER root\n\
+             RUN mkdir -p {INPUT_ROOT}/node_modules/.pnpm/example \
+             {INPUT_ROOT}/packages/example/node_modules/local-store \
+             && echo dependency > {INPUT_ROOT}/node_modules/.pnpm/example/data \
+             && ln -s ../../../node_modules/.pnpm/example {INPUT_ROOT}/packages/example/node_modules/example \
+             && ln -s local-store {INPUT_ROOT}/packages/example/node_modules/internal\n\
+             FROM {base}\nUSER 10001:10001\n"
+        );
+        for output in &outputs {
+            dockerfile.push_str(&prepared_output_copy_instruction(output));
+            dockerfile.push('\n');
+        }
+        for output in &outputs {
+            dockerfile.push_str(&format!(
+                "RUN {}\n",
+                serde_json::to_string(&output_link_command(output, &outputs)).unwrap()
+            ));
+        }
+        dockerfile.push_str(&format!(
+            "RUN test \"$(cat {member_seed}/example/data)\" = dependency \
+             && test \"$(readlink {member_seed}/internal)\" = local-store\n\
+             USER root\nRUN chown -R 0:0 /opt/ayni && chmod -R u=rwX,go=rX /opt/ayni\n\
+             USER 10001:10001\nRUN test ! -w {member_seed} \
+             && test \"$(cat {member_seed}/example/data)\" = dependency\n"
+        ));
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join("Dockerfile"), dockerfile).unwrap();
+        let result = std::process::Command::new("docker")
+            .args(["build", "--quiet"])
+            .arg(directory.path())
+            .output()
+            .expect("Docker build");
+        assert!(
+            result.status.success(),
+            "seed relocation build failed: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
     }
 }
