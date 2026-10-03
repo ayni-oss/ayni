@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.5](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.4...ayni-v0.14.5) (2026-10-03)
+
+
+### Bug Fixes
+
+* **environment:** restore project-relative dependency archives ([#62](https://github.com/ayni-oss/ayni/issues/62)) ([c86daa2](https://github.com/ayni-oss/ayni/commit/c86daa25d2d2ffcd766cac20e5354ca052dce8d1))
+
 ## [0.14.4](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.3...ayni-v0.14.4) (2026-10-03)
 
 
