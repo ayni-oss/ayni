@@ -73,34 +73,18 @@ impl DependencyPreparationCapability for NodeDependencyPreparationCapability {
         reject_unstaged_local_dependencies(request.repo_root(), &inputs)?;
         // The backend executes these commands only in a staged copy. pnpm
         // creates package-local node_modules trees whose symlinks are required
-        // when commands execute from workspace members, so every declared tree
-        // is seeded and mounted rather than only the workspace-owner tree.
+        // when commands execute from workspace members, so retain every tree
+        // as an output in its original project-relative location.
         let outputs = node_module_outputs(owner, &inputs, &manager.family);
-        let mut commands = vec![PreparationCommand::new(
+        let commands = vec![PreparationCommand::new(
             Language::Node,
             manager.family.clone(),
             install_args.into_iter().map(String::from).collect(),
             owner,
             BTreeMap::new(),
         )?];
-        if manager.family == "pnpm" {
-            // pnpm removes empty package-local node_modules directories during
-            // install. Recreate every declared output afterwards so the image
-            // can seed even workspace members that have no local dependencies.
-            commands.extend(prepare_output_directories(&outputs)?);
-        }
-        let mut execution_environment =
+        let execution_environment =
             BTreeMap::from([(String::from("npm_config_offline"), String::from("true"))]);
-        if manager.family == "pnpm" {
-            // The prepared modules tree is authoritative and mounted read-only
-            // with respect to the checkout. pnpm 11 otherwise tries to run an
-            // implicit install before `pnpm exec`, which cannot safely rewrite
-            // that managed tree during quality execution.
-            execution_environment.insert(
-                String::from("PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN"),
-                String::from("false"),
-            );
-        }
         DependencyPreparationPlan::new(
             target.target.clone(),
             inputs,
@@ -144,28 +128,6 @@ fn node_module_outputs(
             mount_path: path.clone(),
             path,
             mode: ayni_core::PreparationOutputMode::Seeded,
-        })
-        .collect()
-}
-
-fn prepare_output_directories(
-    outputs: &[PreparationOutput],
-) -> Result<Vec<PreparationCommand>, AdapterError> {
-    outputs
-        .iter()
-        .map(|output| {
-            let cwd = output
-                .path
-                .strip_suffix("/node_modules")
-                .filter(|path| !path.is_empty())
-                .unwrap_or(".");
-            PreparationCommand::new(
-                Language::Node,
-                "mkdir",
-                vec![String::from("-p"), String::from("node_modules")],
-                cwd,
-                BTreeMap::new(),
-            )
         })
         .collect()
 }
@@ -341,11 +303,6 @@ mod tests {
             plan.execution_environment.get("npm_config_offline"),
             Some(&String::from("true"))
         );
-        assert!(
-            !plan
-                .execution_environment
-                .contains_key("PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN")
-        );
         let pnpm_request =
             DependencyPreparationRequest::new(PathBuf::from(repo.path()), target("pnpm"))
                 .expect("request");
@@ -362,20 +319,7 @@ mod tests {
             install.args,
             ["install", "--frozen-lockfile", "--ignore-scripts"]
         );
-        assert_eq!(
-            pnpm_plan
-                .commands
-                .last()
-                .map(|command| command.program.as_str()),
-            Some("mkdir")
-        );
         assert_eq!(pnpm_plan.materialization_commands[0].program, "pnpm");
-        assert_eq!(
-            pnpm_plan
-                .execution_environment
-                .get("PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN"),
-            Some(&String::from("false"))
-        );
 
         fs::create_dir_all(repo.path().join("packages/app")).expect("member directory");
         fs::write(
@@ -410,11 +354,6 @@ mod tests {
                 .iter()
                 .any(|output| output.mount_path == "packages/app/node_modules")
         );
-        assert!(workspace_plan.commands.iter().any(|command| {
-            command.program == "mkdir"
-                && command.cwd == "packages/app"
-                && command.args == ["-p", "node_modules"]
-        }));
     }
 
     #[test]

@@ -91,6 +91,34 @@ fn verify_with_lock(
     Ok(Some((runtime, lock)))
 }
 
+pub(crate) fn exec_prepared(command: Vec<String>) -> std::process::ExitCode {
+    match prepare_current() {
+        Ok(environment) => {
+            use std::os::unix::process::CommandExt;
+            let error = std::process::Command::new(&command[0])
+                .args(&command[1..])
+                .envs(environment)
+                .exec();
+            crate::application_error::render_error(ApplicationError::execution(error.to_string()))
+        }
+        Err(error) => crate::application_error::render_error(error),
+    }
+}
+
+fn prepare_current() -> Result<BTreeMap<String, String>, ApplicationError> {
+    let root = std::env::current_dir().map_err(|e| ApplicationError::input(e.to_string()))?;
+    if !root.join(".ayni.lock").is_file() {
+        return Ok(BTreeMap::new());
+    }
+    let Some((_, lock)) = verify_with_lock(&root)? else {
+        return Ok(BTreeMap::new());
+    };
+    Ok(ayni_environment::materialize::prepare(
+        &root,
+        lock.fingerprint(),
+    )?)
+}
+
 pub(crate) fn target_environment(
     language: Language,
     root: &str,

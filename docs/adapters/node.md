@@ -10,8 +10,11 @@ requirements, and `ayni env lock` resolves runtime/package-manager ranges using
 or modify the checkout. `env build` stages only locked manifests and native
 package-manager inputs, runs an ignore-scripts frozen installation (`npm ci` or
 `pnpm install --frozen-lockfile`), and stores `node_modules` as an image seed.
-The image entrypoint materializes the seed in an attached checkout using the
-locked offline preparation commands.
+The image entrypoint verifies and restores protected dependency archives in the
+attached checkout's original layout, then runs the adapter's offline rebuild
+command. Workspace-source links remain checkout-relative, not links from
+protected image directories into mutable source. See
+[prepared dependencies and project links](../product/environments.md#prepared-dependencies-and-project-links).
 npm `file:` and `link:`
 dependencies are rejected because their referenced content is not part of the
 staged input contract. Yarn and Bun remain unsupported.

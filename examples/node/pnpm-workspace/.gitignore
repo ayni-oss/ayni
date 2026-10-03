@@ -1,0 +1,4 @@
+.ayni/
+.ayni.lock
+node_modules/
+.vitest/

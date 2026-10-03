@@ -10,6 +10,8 @@ pub(crate) enum OutputFormat {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Operation {
+    ValidateSeeds,
+    PreparedExec(Vec<String>),
     Init(InitOperation),
     EnvShow(EnvShowOperation),
     EnvDoctor(RepositoryOperation),

@@ -29,6 +29,13 @@ impl Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    #[command(hide = true, name = "__validate-seeds")]
+    ValidateSeeds,
+    #[command(hide = true, name = "__exec")]
+    PreparedExec {
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
     /// Preview or write a minimal policy from adapter-owned project discovery.
     Init(InitOptions),
     /// Inspect and manage the repository code environment.
@@ -75,6 +82,8 @@ enum Commands {
 impl Commands {
     fn into_operation(self) -> Operation {
         match self {
+            Self::ValidateSeeds => Operation::ValidateSeeds,
+            Self::PreparedExec { command } => Operation::PreparedExec(command),
             Self::Init(options) => Operation::Init(options.into_operation()),
             Self::Env { command } => command.into_operation(),
             Self::Tools {

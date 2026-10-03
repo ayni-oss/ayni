@@ -93,3 +93,30 @@ ayni check
 The platform owns networking, user identity, resource limits, and isolation.
 Ayni records a verified environment context in its result artifact when runtime
 metadata is present; it does not claim that the launcher isolated the workload.
+
+## Prepared dependencies and project links
+
+The image stores prepared outputs as protected archives, retaining their
+project-relative directory layout. Certification covers the archive bytes and
+preparation instructions, not the editable checkout's source files. Archives
+are validated before certification: entries must belong to declared outputs,
+and dependency links must resolve within the staged project. Links into project
+source are recorded without copying that source into the image.
+
+When started with a checkout containing `.ayni.lock` as its working directory,
+the entrypoint verifies the runtime certificate, protected content, and lock
+before restoring dependencies. It checks link chains against the actual checkout
+too, rejecting source-directory symlinks that escape it. Absolute links within
+the original staged project become relative links; external links, cycles,
+archive traversal, and writes through archive symlinks are rejected. No
+package-manager directory names are used to decide whether a link is safe.
+
+Prepared outputs are restored in their original relative locations and the
+adapter's offline materialization commands run once for that prepared checkout.
+This supports both links between dependency trees and links to editable project
+packages. Existing unrecognized output directories are never silently replaced.
+Preparation is serialized per checkout; a successful marker allows later starts
+to reuse its mutable outputs. A failed or interrupted preparation does not get a
+success marker; use a fresh checkout or explicitly clean only the generated
+outputs before retrying. Changing the environment lock likewise requires fresh
+prepared outputs. The archives remain read-only in the image throughout.
