@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.4](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.3...ayni-v0.14.4) (2026-10-03)
+
+
+### Bug Fixes
+
+* **environment:** replace resolved seed links ([#59](https://github.com/ayni-oss/ayni/issues/59)) ([63dff83](https://github.com/ayni-oss/ayni/commit/63dff83082fec4a013fa1853c5c9c9910a658d21))
+
 ## [0.14.3](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.2...ayni-v0.14.3) (2026-10-02)
 
 
