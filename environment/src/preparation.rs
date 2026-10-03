@@ -2,123 +2,15 @@ use crate::BackendError;
 use crate::runtime::target_environment;
 use ayni_core::{
     DependencyPreparationPlan, EnvironmentLock, PreparationOutput, PreparationOutputMode,
-    sha256_fingerprint, sha256_hex,
+    sha256_fingerprint,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) const INPUT_ROOT: &str = "/tmp/ayni/repository";
-pub(crate) const SEED_ROOT: &str = "/opt/ayni/dependencies";
-pub(crate) const CACHE_SEED_ROOT: &str = "/opt/ayni/cache-seed";
-const PREPARATION_IMPLEMENTATION_VERSION: &str = "12";
-
-// Package-manager caches can contain absolute links into their build-time home.
-// Keep internal links relocatable when the seed is copied into a disposable cache.
-const CACHE_LINK_SCRIPT: &str = r#"
-source=$1
-seed=$2
-shift 2
-for link do
-    target=$(/usr/bin/readlink -- "$link")
-    case "$target" in
-        /*)
-            target=$(/usr/bin/realpath -ms -- "$target")
-            case "$target" in
-                "$source"|"$source"/*)
-                    target="$seed${target#"$source"}"
-                    relative=$(/usr/bin/realpath -ms --relative-to="${link%/*}" -- "$target")
-                    /bin/ln -snf -- "$relative" "$link"
-                    ;;
-            esac
-            ;;
-    esac
-done
-"#;
-
-// Prepared output trees may contain relative links between sibling workspace
-// directories. Copying each tree beneath its own content-addressed seed changes
-// that relationship, so rewrite only targets that resolve to another prepared
-// tree. External links deliberately remain untouched for certification to
-// reject when they escape protected content.
-const OUTPUT_LINK_SCRIPT: &str = r#"
-seed=$1
-source=$2
-shift 2
-while [ "$1" != "--" ]; do
-    source_root=$1
-    seed_root=$2
-    shift 2
-    mappings="${mappings-}${source_root}
-${seed_root}
-"
-done
-shift
-for link do
-    target=$(/usr/bin/readlink -- "$link")
-    case "$target" in
-        /*) resolved=$(/usr/bin/realpath -ms -- "$target") ;;
-        *) resolved=$(/usr/bin/realpath -ms -- "$source/${link#"$seed"}/../$target") ;;
-    esac
-    printf '%s' "$mappings" | while IFS= read -r source_root && IFS= read -r seed_root; do
-        case "$resolved" in
-            "$source_root"|"$source_root"/*)
-                relocated="$seed_root${resolved#"$source_root"}"
-                relative=$(/usr/bin/realpath -ms --relative-to="${link%/*}" -- "$relocated")
-                /bin/ln -snfT -- "$relative" "$link"
-                break
-                ;;
-        esac
-    done
-done
-"#;
-
-fn cache_link_command<'a>(source: &'a str, seed: &'a str) -> Vec<&'a str> {
-    vec![
-        "/usr/bin/find",
-        seed,
-        "-type",
-        "l",
-        "-exec",
-        "/bin/sh",
-        "-eu",
-        "-c",
-        CACHE_LINK_SCRIPT,
-        "ayni-cache-links",
-        source,
-        seed,
-        "{}",
-        "+",
-    ]
-}
-
-fn output_link_command(output: &PreparationOutput, outputs: &[PreparationOutput]) -> Vec<String> {
-    let seed = format!("{SEED_ROOT}/{}", output_key(output));
-    let mut command = vec![
-        String::from("/usr/bin/find"),
-        seed.clone(),
-        String::from("-type"),
-        String::from("l"),
-        String::from("-exec"),
-        String::from("/bin/sh"),
-        String::from("-eu"),
-        String::from("-c"),
-        String::from(OUTPUT_LINK_SCRIPT),
-        String::from("ayni-output-links"),
-        seed,
-        docker_path(INPUT_ROOT, &output.path),
-    ];
-    for output in outputs {
-        command.push(docker_path(INPUT_ROOT, &output.path));
-        command.push(format!("{SEED_ROOT}/{}", output_key(output)));
-    }
-    command.extend([String::from("--"), String::from("{}"), String::from("+")]);
-    command
-}
-
-fn prepared_cache_copy(stage: &str) -> String {
-    format!("COPY --from={stage} --chown=10001:10001 /home/ayni/.cache {CACHE_SEED_ROOT}\n")
-}
+pub(crate) const SEED_ROOT: &str = "/opt/ayni/preparation";
+const PREPARATION_IMPLEMENTATION_VERSION: &str = "14";
 
 pub(crate) fn dockerfile_fragment(
     lock: &EnvironmentLock,
@@ -150,30 +42,50 @@ pub(crate) fn dockerfile_fragment(
                 }
             }
         }
+        let paths = unique_outputs(&group.plans)
+            .into_iter()
+            .filter(|item| item.mode != PreparationOutputMode::Fresh)
+            .map(|item| item.path)
+            .collect::<Vec<_>>();
+        output.push_str("RUN mkdir -p /tmp/ayni-seeds\n");
+        if !paths.is_empty() {
+            let mut directories = vec!["mkdir".to_owned(), "-p".into(), "--".into()];
+            directories.extend(paths.iter().map(|path| docker_path(INPUT_ROOT, path)));
+            output.push_str(&format!(
+                "RUN {}\n",
+                serde_json::to_string(&directories).unwrap()
+            ));
+        }
+        let mut archive = vec![
+            "tar".to_owned(),
+            "--hard-dereference".into(),
+            "-cf".into(),
+            "/tmp/ayni-seeds/outputs.tar".into(),
+            "-C".into(),
+            INPUT_ROOT.into(),
+        ];
+        if paths.is_empty() {
+            archive.extend(["--files-from".into(), "/dev/null".into()]);
+        } else {
+            archive.push("--".into());
+            archive.extend(paths);
+        }
+        output.push_str(&format!(
+            "RUN {}\n",
+            serde_json::to_string(&archive).unwrap()
+        ));
+        output.push_str(
+            "RUN tar --hard-dereference -cf /tmp/ayni-seeds/cache.tar -C /home/ayni/.cache .\n",
+        );
     }
     output.push_str("FROM ayni-tools\n");
     for group in &groups {
-        output.push_str(&prepared_cache_copy(&format!("preparation-{}", group.id)));
-        let prepared_outputs = unique_outputs(&group.plans);
-        for prepared in &prepared_outputs {
-            if prepared.mode != PreparationOutputMode::Fresh {
-                output.push_str(&prepared_output_copy_instruction(prepared).replace(
-                    "--from=ayni-preparation",
-                    &format!("--from=preparation-{}", group.id),
-                ));
-                output.push('\n');
-            }
-        }
-        for prepared in &prepared_outputs {
-            let relocate_outputs =
-                serde_json::to_string(&output_link_command(prepared, &prepared_outputs))
-                    .expect("prepared output relocation command");
-            output.push_str(&format!("RUN {relocate_outputs}\n"));
-        }
+        output.push_str(&format!(
+            "COPY --from=preparation-{} /tmp/ayni-seeds/ {SEED_ROOT}/{}/\n",
+            group.id, group.id
+        ));
     }
-    let relocate = serde_json::to_string(&cache_link_command("/home/ayni/.cache", CACHE_SEED_ROOT))
-        .expect("static cache relocation command");
-    output.push_str(&format!("RUN {relocate}\n"));
+    output.push_str(&format!("COPY preparation.json {SEED_ROOT}/plans.json\n"));
     Ok(output)
 }
 
@@ -182,6 +94,11 @@ pub(crate) fn stage_inputs(
     context_root: &Path,
     plans: &[DependencyPreparationPlan],
 ) -> Result<(), BackendError> {
+    fs::write(
+        context_root.join("preparation.json"),
+        serde_json::to_vec(plans).unwrap(),
+    )
+    .map_err(|error| BackendError::execution(format!("write preparation metadata: {error}")))?;
     let groups_root = context_root.join("groups");
     fs::create_dir(&groups_root).map_err(|error| {
         BackendError::execution(format!("failed to create preparation groups: {error}"))
@@ -328,10 +245,6 @@ pub(crate) fn unique_outputs(plans: &[DependencyPreparationPlan]) -> Vec<Prepara
     outputs.into_iter().collect()
 }
 
-pub(crate) fn output_key(output: &PreparationOutput) -> String {
-    sha256_hex(format!("{}\0{}", output.path, output.mount_path))
-}
-
 fn ordered_plans(plans: &[DependencyPreparationPlan]) -> Vec<&DependencyPreparationPlan> {
     let mut plans = plans.iter().collect::<Vec<_>>();
     plans.sort_by(|left, right| left.target.cmp(&right.target));
@@ -387,17 +300,6 @@ fn preparation_run_instruction(
     format!(
         "RUN {}",
         serde_json::to_string(&argv).expect("argv serialization")
-    )
-}
-
-fn prepared_output_copy_instruction(output: &PreparationOutput) -> String {
-    let paths = [
-        docker_path(INPUT_ROOT, &output.path),
-        format!("{SEED_ROOT}/{}", output_key(output)),
-    ];
-    format!(
-        "COPY --from=ayni-preparation {}",
-        serde_json::to_string(&paths).expect("copy path serialization")
     )
 }
 
@@ -465,121 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn prepared_cache_copy_keeps_the_immutable_seed_outside_the_runtime_cache_path() {
-        let fragment = prepared_cache_copy("preparation-group");
-        assert!(fragment.contains("--chown=10001:10001"));
-        assert!(fragment.contains(CACHE_SEED_ROOT));
-        assert!(!fragment.contains("--chmod"));
-        assert!(!fragment.contains("RUN chmod"));
-        assert!(!fragment.contains("USER root"));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn cache_links_survive_relocation_without_rewriting_external_targets() {
-        use std::os::unix::fs::symlink;
-        let temporary = tempfile::tempdir().unwrap();
-        let seed = temporary.path().join("seed with spaces");
-        let wheels = seed.join("wheels/package");
-        fs::create_dir_all(&wheels).unwrap();
-        fs::create_dir_all(seed.join("archive/wheel")).unwrap();
-        fs::write(seed.join("archive/wheel/data"), "cached wheel").unwrap();
-        symlink("/home/ayni/.cache/archive/wheel", wheels.join("absolute")).unwrap();
-        symlink("../../archive/wheel", wheels.join("relative")).unwrap();
-        symlink("/home/ayni/.cache-other/wheel", wheels.join("external")).unwrap();
-
-        let command = cache_link_command("/home/ayni/.cache", seed.to_str().unwrap());
-        assert!(
-            std::process::Command::new(command[0])
-                .args(&command[1..])
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert_eq!(
-            fs::read_link(wheels.join("absolute")).unwrap(),
-            Path::new("../../archive/wheel")
-        );
-        assert_eq!(
-            fs::read_link(wheels.join("relative")).unwrap(),
-            Path::new("../../archive/wheel")
-        );
-        assert_eq!(
-            fs::read_link(wheels.join("external")).unwrap(),
-            Path::new("/home/ayni/.cache-other/wheel")
-        );
-        let relocated = temporary.path().join("runtime cache");
-        fs::rename(seed, &relocated).unwrap();
-        for link in ["absolute", "relative"] {
-            assert_eq!(
-                fs::read_to_string(relocated.join("wheels/package").join(link).join("data"))
-                    .unwrap(),
-                "cached wheel"
-            );
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn output_links_preserve_workspace_topology_after_seed_relocation() {
-        use std::os::unix::fs::symlink;
-
-        let temporary = tempfile::tempdir().unwrap();
-        let source = temporary.path().join("repository");
-        let root_modules = source.join("node_modules");
-        let member_modules = source.join("packages/example/node_modules");
-        let seeds = temporary.path().join("dependencies");
-        let root_seed = seeds.join("root");
-        let member_seed = seeds.join("member");
-        fs::create_dir_all(root_seed.join(".pnpm/axe-core")).unwrap();
-        fs::create_dir_all(member_seed.join("local-store")).unwrap();
-        fs::write(root_seed.join(".pnpm/axe-core/data"), "dependency").unwrap();
-        fs::write(member_seed.join("local-store/data"), "local dependency").unwrap();
-        symlink(
-            "../../../node_modules/.pnpm/axe-core",
-            member_seed.join("@axe-core"),
-        )
-        .unwrap();
-        symlink("local-store", member_seed.join("internal")).unwrap();
-
-        let status = std::process::Command::new("/bin/sh")
-            .args([
-                "-eu",
-                "-c",
-                OUTPUT_LINK_SCRIPT,
-                "ayni-output-links",
-                member_seed.to_str().unwrap(),
-                member_modules.to_str().unwrap(),
-                root_modules.to_str().unwrap(),
-                root_seed.to_str().unwrap(),
-                member_modules.to_str().unwrap(),
-                member_seed.to_str().unwrap(),
-                "--",
-                member_seed.join("@axe-core").to_str().unwrap(),
-                member_seed.join("internal").to_str().unwrap(),
-            ])
-            .status()
-            .unwrap();
-        assert!(status.success());
-        assert_eq!(
-            fs::read_to_string(member_seed.join("@axe-core/data")).unwrap(),
-            "dependency"
-        );
-        assert_eq!(
-            fs::read_link(member_seed.join("@axe-core")).unwrap(),
-            Path::new("../root/.pnpm/axe-core")
-        );
-        assert_eq!(
-            fs::read_to_string(member_seed.join("internal/data")).unwrap(),
-            "local dependency"
-        );
-        assert_eq!(
-            fs::read_link(member_seed.join("internal")).unwrap(),
-            Path::new("local-store")
-        );
-    }
-
-    #[test]
     fn preparation_run_encodes_repository_paths_as_json_data() {
         let cwd = "packages/space dir/\tcontrol\r\nRUN touch /tmp/injected";
         let command = PreparationCommand {
@@ -612,27 +399,5 @@ mod tests {
                 "fetch",
             ]
         );
-    }
-
-    #[test]
-    fn prepared_output_copy_encodes_repository_paths_as_json_data() {
-        let path = "packages/space dir/\tcontrol\r\nCOPY secrets /tmp/leak";
-        let output = PreparationOutput {
-            path: path.into(),
-            mount_path: path.into(),
-            mode: PreparationOutputMode::Seeded,
-        };
-
-        let instruction = prepared_output_copy_instruction(&output);
-
-        assert!(!instruction.contains(['\n', '\r', '\t']));
-        let paths = serde_json::from_str::<Vec<String>>(
-            instruction
-                .strip_prefix("COPY --from=ayni-preparation ")
-                .expect("COPY instruction"),
-        )
-        .expect("JSON-form COPY");
-        assert_eq!(paths[0], docker_path(INPUT_ROOT, path));
-        assert_eq!(paths[1], format!("{SEED_ROOT}/{}", output_key(&output)));
     }
 }

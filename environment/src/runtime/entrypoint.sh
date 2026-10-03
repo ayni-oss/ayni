@@ -19,4 +19,4 @@ fi
 if [ "$#" -eq 0 ]; then
     set -- /bin/sh
 fi
-exec "$@"
+exec /usr/local/bin/ayni __exec "$@"

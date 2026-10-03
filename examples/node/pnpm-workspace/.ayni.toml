@@ -1,0 +1,13 @@
+[checks]
+test = true
+coverage = false
+size = false
+complexity = false
+deps = false
+mutation = false
+
+[languages]
+enabled = ["node"]
+
+[node]
+roots = ["apps/app"]

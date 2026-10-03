@@ -18,6 +18,7 @@ mod executor;
 pub use executor::execution_build_record;
 mod image;
 mod lock;
+pub mod materialize;
 pub mod prebuilt;
 mod preparation;
 mod preparation_groups;

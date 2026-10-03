@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/app",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@fixture/library": "workspace:*" },
+  "devDependencies": { "vitest": "5.0.2" }
+}

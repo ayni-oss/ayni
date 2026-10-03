@@ -160,7 +160,7 @@ pub(crate) fn bind(plan: &mut ImagePlan, executor: &ExecutorIdentity) {
     let identity = executor.fingerprint();
     plan.tag.push_str(&format!("-exec-{}", &identity[7..23]));
     plan.dockerfile = format!(
-        "FROM {} AS ayni-executor\n{}\nCOPY --from=ayni-executor /usr/local/bin/ayni /usr/local/bin/ayni\nLABEL {EXECUTOR_LABEL}=\"{identity}\" {RECIPE_LABEL}=\"{RECIPE_VERSION}\"\nCMD [\"/bin/sh\"]\n",
+        "FROM {} AS ayni-executor\n{}\nCOPY --from=ayni-executor /usr/local/bin/ayni /usr/local/bin/ayni\nRUN [\"/usr/local/bin/ayni\", \"__validate-seeds\"]\nLABEL {EXECUTOR_LABEL}=\"{identity}\" {RECIPE_LABEL}=\"{RECIPE_VERSION}\"\nCMD [\"/bin/sh\"]\n",
         executor.image(),
         plan.dockerfile
     );

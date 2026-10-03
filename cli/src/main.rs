@@ -37,6 +37,8 @@ fn dispatch(operation: application::Operation) -> ExitCode {
     use application::Operation;
 
     match operation {
+        Operation::ValidateSeeds => validate_seeds(),
+        Operation::PreparedExec(command) => prebuilt_runtime::exec_prepared(command),
         Operation::Init(operation) => init::run(operation, &build_registry()),
         operation @ (Operation::Check(_) | Operation::Verify(_) | Operation::ImpactRun(_)) => {
             dispatch_analysis(operation)
@@ -66,6 +68,13 @@ fn dispatch(operation: application::Operation) -> ExitCode {
             );
             ExitCode::SUCCESS
         }
+    }
+}
+
+fn validate_seeds() -> ExitCode {
+    match ayni_environment::materialize::validate_build() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => crate::application_error::render_error(error.into()),
     }
 }
 
