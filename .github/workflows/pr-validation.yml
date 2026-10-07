@@ -6,7 +6,7 @@ on:
 
 concurrency:
   # One active validation run per PR; independent jobs start together.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: pr-validation-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions: {}
