@@ -5,7 +5,8 @@ on:
     types: [opened, edited, reopened, synchronize]
 
 concurrency:
-  group: pr-validation-${{ github.event.pull_request.number }}
+  # One active validation run per PR; independent jobs start together.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions: {}
@@ -117,7 +118,7 @@ jobs:
             --workdir /workspace \
             "$image" ayni check --config .ayni.toml --output markdown | tee "$RUNNER_TEMP/ayni.md"
       - name: Upload Ayni JSON evidence
-        if: ${{ always() }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ayni-pr-evidence
@@ -126,7 +127,7 @@ jobs:
           retention-days: 1
 
       - name: Upload Ayni report
-        if: ${{ always() }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ayni-pr-report
@@ -137,7 +138,7 @@ jobs:
   report:
     name: Ayni PR comment
     needs: ayni
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: write
@@ -195,7 +196,7 @@ jobs:
 
   complete:
     name: Required completion
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     needs: [metadata, cncf, product, ayni]
     runs-on: ubuntu-24.04
     steps:
