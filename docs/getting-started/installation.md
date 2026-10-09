@@ -2,12 +2,6 @@
 
 Install the Ayni CLI first. Managed environments are provisioned separately for each repository from its committed environment lock.
 
-## Current status
-
-`ayni-oss/ayni` has not published its first release yet. Build from source for
-now. The release instructions below describe the verified installation contract
-that applies once the project publishes a release.
-
 ## Install a published release
 
 The installer detects your operating system and architecture, downloads the matching release archive and `SHA256SUMS`, requires `sha256sum` or `shasum` to verify the archive, validates the archive layout, and installs `ayni` into `~/.local/bin`.
@@ -129,15 +123,17 @@ Installing the CLI does **not** install every language tool used by a repository
 
 To build an image:
 
-- install Docker with Buildx for first-build release executor resolution;
-- keep Docker running, or use compatible Podman support for image operations;
-- install [Mise](https://mise.jdx.dev/), which is required and version-recorded for every `ayni env lock`; and
-- commit the native project metadata and dependency locks required by each language adapter.
+- Provide Docker CLI, Buildx, and an engine supporting build, image inspection, and container execution.
+- Install [Mise](https://mise.jdx.dev/) when resolving a new lock with `ayni env lock`.
+- Commit the native project metadata and dependency locks required by each language adapter.
 
-Locking uses a pinned durable substrate. For a checkout-built executor, supply its immutable identity at build time:
+Building an existing lock does not require host Mise or project toolchains.
+For Kubernetes or CI, use the versioned `ghcr.io/ayni-oss/ayni-builder:<version>` factory with an external engine.
+It builds a separate repository image; agents and quality commands run in that resulting image.
+For an explicit builder selection, pin its immutable digest:
 
 ```sh
-ayni env build --executor-image '<image-reference>@sha256:<digest>'
+ayni env build --executor-image 'ghcr.io/ayni-oss/ayni-builder:<version>@sha256:<digest>'
 ```
 
 See [Managed environments](/product/environments) for the complete lifecycle and per-language readiness requirements.

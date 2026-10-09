@@ -38,18 +38,16 @@ repair targets.
 
 ## Install
 
+Use the [installation guide](docs/getting-started/installation.md) for verified release archives and the installer.
+Published versions are listed on [GitHub Releases](https://github.com/ayni-oss/ayni/releases).
+
 ### From source
 
-The `ayni-oss` project has not published its first release yet. Build from this
-repository:
+Build from this repository with its pinned Rust toolchain:
 
 ```sh
 cargo install --locked --path cli
 ```
-
-After the first release, the verified installer and supported platform archives
-will be documented in the [installation guide](docs/getting-started/installation.md).
-
 
 ## Quick Start
 
@@ -157,6 +155,17 @@ For command details, image launch examples, output behavior, and result
 comparison semantics, see the [CLI reference](docs/cli.md),
 [configuration reference](docs/product/config.md), and
 [conceptual guide](docs/getting-started/how-ayni-works.md).
+
+## Builder, environment, and quality evidence
+
+The versioned `ayni-builder` factory produces a separate repository development image.
+The factory contains build clients; the resulting image contains the locked tools and prepared dependencies used during development.
+Quality commands run in the current workspace and never launch or build a container.
+
+Environment certification binds metadata and protected content to the lock and optional trusted signer.
+It does not certify editable source quality. Quality evidence measures the configured policy, tools, and tests;
+a passing result does not grant merge approval or establish regulatory compliance.
+See the [security model](docs/product/security.md) for verification boundaries.
 
 ## Signals
 
