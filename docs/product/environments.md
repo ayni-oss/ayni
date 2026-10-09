@@ -28,6 +28,24 @@ With both `AYNI_ENV_CERTIFICATE_SIGNING_KEY` and
 `AYNI_ENV_CERTIFICATE_KEY_ID` set, Ayni signs the same metadata and verifies the
 configured repository trust key. Supplying only one signing value fails.
 
+## Building in Kubernetes
+
+Use `ghcr.io/ayni-oss/ayni-builder:<version>` as the factory Job image. Attach a
+checkout with a current `.ayni.lock` and configure Docker access to an external
+engine. The builder contains Ayni, Docker CLI, Buildx, Git and CA certificates;
+it contains no daemon or project language runtimes. Docker-compatible build,
+image inspection and container execution are required for certification.
+
+Run `ayni env build --repo-root /workspace`. The output is a separate repository
+image, not an installation into the factory container. Mise and the locked tools
+run inside its generated build stages. Supply the signing variables for signed
+certification. Publish the result separately using the build record's image tag.
+Start agents in containers from that resulting image.
+
+The CLI also runs directly on a host. Building an existing lock does not require
+host Mise or project toolchains; Docker/Buildx and an engine provide the build and
+validation operations. Resolving a new lock with `ayni env lock` requires Mise.
+
 ## Signing an environment image
 
 Use an Ed25519 key dedicated to environment-image signing. Ayni expects the
@@ -83,6 +101,8 @@ working directory, then invokes native development tools or plain Ayni commands:
 
 ```sh
 docker run --rm -it \
+  --env HOME=/tmp/home --env XDG_CACHE_HOME=/tmp/cache \
+  --env MISE_CACHE_DIR=/tmp/mise \
   --mount type=bind,source="$PWD",target=/workspace \
   --workdir /workspace \
   <image> /bin/sh
@@ -90,7 +110,8 @@ docker run --rm -it \
 ayni check
 ```
 
-The platform owns networking, user identity, resource limits, and isolation.
+The platform provides writable runtime cache directories and owns networking,
+user identity, resource limits, and isolation.
 Ayni records a verified environment context in its result artifact when runtime
 metadata is present; it does not claim that the launcher isolated the workload.
 

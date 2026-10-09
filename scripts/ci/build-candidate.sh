@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Native Linux only: the very same executable orchestrates and executes checks.
-source .github/docker/ayni-env.versions
+source .github/docker/ayni-builder.versions
 output="${1:?candidate output directory required}"
 platform="${2:?platform required}"
 mkdir -p "$output"
@@ -25,7 +25,7 @@ source_revision="$(git rev-parse HEAD)"
 docker build --provenance=false --platform "$platform" \
   --build-arg "DEBIAN_IMAGE=$DEBIAN_IMAGE" --build-arg "AYNI_VERSION=$version" \
   --build-arg "SOURCE_REVISION=$source_revision" \
-  --file .github/docker/ayni-candidate.Dockerfile --tag ayni-candidate:checkout "$output"
+  --file .github/docker/ayni-builder.Dockerfile --tag ayni-candidate:checkout "$output"
 docker save --output "$output/executor.tar" ayni-candidate:checkout
 python3 scripts/ci/candidate.py record --directory "$output" --source "$source_revision" \
   --platform "$platform" --run-id "${GITHUB_RUN_ID:?same-run identity required}"

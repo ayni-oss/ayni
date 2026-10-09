@@ -1,25 +1,32 @@
 # Provisioning and repository automation
 
-Ayni uses one composed repository environment whose durable provisioning
-substrate is independent of the executor. The `ayni-provisioning` image contains
-Debian prerequisites, Mise, and the execution user; it does not contain an Ayni
-executable or language-specific runtime.
+Ayni publishes one container image per CLI release:
+`ghcr.io/ayni-oss/ayni-builder:<version>`, for Linux amd64 and arm64. The builder
+contains Ayni, Docker CLI, Buildx, Git and CA certificates. It connects to an
+external engine and does not contain a Docker daemon or project toolchains.
+Standalone CLI archives remain available for macOS and Linux.
 
 ## Provisioning contract
 
-`.github/docker/provisioning.versions` records the immutable Debian and Mise
-inputs used by the substrate. `environment/provisioning.json` is the
-authoritative substrate reference embedded in Ayni, and `.ayni.lock` binds the
-repository contract to an exact published digest.
+`environment/provisioning.json` records the immutable upstream Debian base used
+by new locks. `.github/docker/provisioning.versions` pins Debian and Mise inputs.
+`ayni env build` generates instructions that install OS prerequisites, verify the
+Mise download checksum, create the execution user, and install locked tools and
+prepare dependencies inside the produced image. Mise is not required in the
+factory container when building an existing lock.
 
-A substrate digest must be built for every supported architecture, scanned, and
-publicly pullable before it is adopted. Updating the committed reference is a
-separate reviewed change. The repository no longer publishes provisioning
-images from a GitHub Actions workflow.
+The version-matched builder supplies only its Ayni executable to the produced
+image. Docker and Buildx are not copied into repository environments. No separate
+Ayni CLI or provisioning image is published. Existing locks referencing a
+labelled provisioning image remain supported; their immutable inputs do not
+change until the lock is explicitly regenerated.
 
-Environment lock schema `0.7.0` separates the provisioning substrate from the
-executor identity. Regenerate a changed lock twice with the checkout CLI and
-require byte-for-byte equality before committing it.
+The builder recipe is `.github/docker/ayni-builder.Dockerfile`. Pull-request
+candidates, local builds, and release publication all use this recipe. Run
+`scripts/build-local-environment-image.sh` to build `ayni-builder:local`.
+
+Regenerate a changed lock twice with the checkout CLI and require byte-for-byte
+equality before committing it.
 
 ## Pull-request validation
 
@@ -47,10 +54,17 @@ workflow intentionally represents only the repository's declared Ayni contract.
 recovery for an existing release tag. When a release is created or selected, it
 calls `.github/workflows/release-publication.yml` to build the supported macOS
 and Linux CLI archives, attest them, generate checksums, upload the assets, and
-publish `ghcr.io/ayni-oss/ayni-env:<version>-debian` for Linux amd64 and arm64.
-The executor tag is validated anonymously and its digest is the immutable
+publish `ghcr.io/ayni-oss/ayni-builder:<version>` for Linux amd64 and arm64.
+The builder tag is validated anonymously and its digest is the immutable
 identity Ayni records in an environment build.
 
 Release publication uses immutable tagged source and remains recoverable for an
 existing public release. The archive naming contract is
 `ayni-<release-tag>-<target>.tar.gz`.
+
+For recovery of a tag predating the builder recipe, binary compilation retains
+that tag's original compiler inputs. Factory packaging uses the immutable
+publication-workflow revision's builder recipe. The image records the tagged
+CLI source in `org.opencontainers.image.revision` and the factory recipe source
+in `dev.ayni.builder.recipe-revision`. Tags that contain the builder recipe use
+the tagged recipe directly.

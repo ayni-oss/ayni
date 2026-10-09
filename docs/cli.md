@@ -146,7 +146,7 @@ Resolve exact environment requirements into the committed lock
 * `--repo-root <REPO_ROOT>` — Repository root where `.ayni.lock` will be written
 
   Default value: `.`
-* `--base <BASE>` — Exact environment base as `<reference>@sha256:<digest>`; otherwise resolve the release base with Docker Buildx
+* `--base <BASE>` — Exact provisioning base as `<reference>@sha256:<digest>`; defaults to pinned upstream Debian
 
 
 
@@ -161,7 +161,7 @@ Build the repository code-environment image from a current lock
 * `--repo-root <REPO_ROOT>` — Repository containing the committed environment lock
 
   Default value: `.`
-* `--executor-image <REFERENCE@sha256:DIGEST>` — Use this immutable executor image without changing the environment lock
+* `--executor-image <REFERENCE@sha256:DIGEST>` — Use this immutable builder image to supply Ayni without changing the environment lock
 * `--tag <TAG>` — Local tag applied to the built image. This does not publish it
 * `--cache-from <CACHE>` — Import an external Buildx cache; repeat for multiple sources. Does not change the lock
 * `--cache-to <CACHE>` — Export an external Buildx cache; repeat for multiple destinations. Does not change the lock
