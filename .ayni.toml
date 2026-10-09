@@ -1,3 +1,4 @@
+environment = { certificate = { trusted_keys = { project-2026 = "503e65851ff2ac80d18ef4a5aafeeaa4664e816be09138662c1723a75f611c3a" } } }
 [checks]
 test = true
 coverage = true
