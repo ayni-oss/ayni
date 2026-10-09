@@ -35,3 +35,18 @@ code while it is built. Review changes to the environment configuration, lock,
 base image, dependencies, and signing setup as supply-chain changes. Use
 ordinary registry and container controls for publishing, pulling by digest,
 and platform-specific launch policy.
+
+## Verification and evidence
+
+A valid signature authenticates a statement from a key; consumers must also trust that key and match the expected artifact and inputs.
+For repository environments, verify the lock, platform, certificate, and protected content under the configured trust policy.
+The launching platform owns admission of the expected immutable image digest.
+
+Builder release provenance and repository environment certification describe different artifacts.
+The versioned factory builds the repository image; verifying the latter does not establish the factory's release provenance.
+[Feature #75](https://github.com/ayni-oss/ayni/issues/75) tracks verification before builder work starts, including the trusted launcher's role.
+The current factory does not implement that startup gate; self-verification inside an untrusted image is not a sufficient root of trust.
+
+Quality results measure the configured tools and tests against repository policy.
+They do not prove universal correctness, independent approval, or regulatory compliance.
+A platform requiring independent assessment must control its policy, execution identity, and retained evidence outside the code author's authority.

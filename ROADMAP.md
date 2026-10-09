@@ -1,25 +1,24 @@
 # Roadmap
 
-Ayni's roadmap is maintained publicly in this document and in GitHub issues and
-milestones. This is a planning document, not a delivery promise.
+Ayni is independently useful as a local quality CLI and portable environment builder.
+Current requirements live in [public issues](https://github.com/ayni-oss/ayni/issues)
+and the [CLI Project](https://github.com/orgs/ayni-oss/projects/1).
+Released changes are recorded in [the changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/ayni-oss/ayni/releases).
 
 ## Near term
 
-- Establish reproducible release, signing, provenance, and managed-environment
-  publication workflows under `ayni-oss`.
-- Make the local quality contract and language-adapter behavior clear and
-  contributor-ready.
-- Improve documentation, examples, and security-response readiness.
+- Define and implement [builder attestation verification before repository work](https://github.com/ayni-oss/ayni/issues/75).
+- Keep environment identity, quality results, and platform trust responsibilities explicit in public contracts.
+- Improve reproducibility for supported project shapes and actionable adapter findings.
 
 ## Later
 
-- Add adapter capabilities only when they have a stable, testable contract.
-- Build a sustainable contributor and maintainer community around real use.
+- Expand adapter capabilities only when their measurements have a stable, testable contract.
+- Grow independent adoption, contributors, and maintainers around real use.
+- Track CNCF readiness through evidence of public governance, security practices, and community participation; membership is not claimed.
 
 ## Changing the roadmap
 
-Anyone may propose a roadmap change in an issue. A maintainer records material
-prioritization decisions in that issue or its linked pull request, following
-[GOVERNANCE.md](GOVERNANCE.md). Completed work is tracked through merged pull
-requests and closed milestones; no item is considered delivered solely because
-it appears here.
+Anyone may propose a change in a public issue. Maintainers record prioritization there,
+following [GOVERNANCE.md](GOVERNANCE.md).
+Planned features are not delivered capabilities; completion requires implementation and validation.
