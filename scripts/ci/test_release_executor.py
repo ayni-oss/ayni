@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 
@@ -23,6 +24,30 @@ def execute(lines, **variables):
 
 
 class ReleaseExecutorTests(unittest.TestCase):
+    def test_recovery_uses_pinned_workflow_recipe_only_when_tag_has_no_builder(self):
+        source = WORKFLOW.read_text()
+        selection = source[source.index("          recipe_root=."):source.index('          archive="release/')]
+        selection = "\n".join(line[10:] for line in selection.splitlines())
+        for tagged_builder in (True, False):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                recovery = root / "factory-source/.github/docker"
+                recovery.mkdir(parents=True)
+                (recovery / "ayni-builder.versions").write_text("DEBIAN_IMAGE=workflow-debian\n")
+                if tagged_builder:
+                    tagged = root / ".github/docker"
+                    tagged.mkdir(parents=True)
+                    (tagged / "ayni-builder.Dockerfile").write_text("FROM debian\n")
+                    (tagged / "ayni-builder.versions").write_text("DEBIAN_IMAGE=tagged-debian\n")
+                result = subprocess.run(
+                    ["bash", "-ec", selection + '\nprintf "%s %s" "$recipe_revision" "$DEBIAN_IMAGE"'],
+                    cwd=root, env={**os.environ, "EXPECTED_COMMIT": "tagged-source", "WORKFLOW_COMMIT": "workflow-source"},
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "tagged-source tagged-debian" if tagged_builder
+                                 else "workflow-source workflow-debian")
+
     def test_both_label_checks_accept_valid_metadata_and_reject_each_mismatch(self):
         lines = checks('<<<"$labels"')
         self.assertEqual(len(lines), 8)

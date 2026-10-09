@@ -160,7 +160,7 @@ pub(crate) fn bind(plan: &mut ImagePlan, executor: &ExecutorIdentity) {
     let identity = executor.fingerprint();
     plan.tag.push_str(&format!("-exec-{}", &identity[7..23]));
     plan.dockerfile = format!(
-        "FROM {} AS ayni-executor\n{}\nCOPY --from=ayni-executor /usr/local/bin/ayni /usr/local/bin/ayni\nRUN [\"/usr/local/bin/ayni\", \"__validate-seeds\"]\nLABEL {EXECUTOR_LABEL}=\"{identity}\" {RECIPE_LABEL}=\"{RECIPE_VERSION}\"\nCMD [\"/bin/sh\"]\n",
+        "FROM {} AS ayni-executor\n{}\nCOPY --from=ayni-executor /usr/local/bin/ayni /usr/local/bin/ayni\nCOPY --from=ayni-executor /usr/share/doc/ayni/ /usr/share/doc/ayni/\nRUN [\"/usr/local/bin/ayni\", \"__validate-seeds\"]\nLABEL org.opencontainers.image.licenses=\"Apache-2.0\" {EXECUTOR_LABEL}=\"{identity}\" {RECIPE_LABEL}=\"{RECIPE_VERSION}\"\nCMD [\"/bin/sh\"]\n",
         executor.image(),
         plan.dockerfile
     );
@@ -269,7 +269,7 @@ pub(crate) fn resolve(
         Some(image) => crate::lock::parse_exact_base(image)?,
         None => {
             let reference = format!(
-                "ghcr.io/ayni-oss/ayni-env:{}-debian",
+                "ghcr.io/ayni-oss/ayni-builder:{}",
                 env!("CARGO_PKG_VERSION")
             );
             let digest = crate::lock::inspect_remote_digest(&reference)?;
@@ -449,6 +449,9 @@ pub(crate) fn validate_substrate(
     let base = lock.provisioning_base();
     let reference = format!("{}@{}", base.reference, base.digest);
     engine_output(root, engine, &["pull".into(), reference.clone()])?;
+    if crate::image::uses_builtin_debian(base) {
+        return Ok(());
+    }
     let image = inspect(root, engine, &reference)?;
     let labels = &image["Config"]["Labels"];
     if labels["dev.ayni.provisioning.schema"].as_str() != Some("1")
@@ -567,7 +570,7 @@ mod tests {
         let first = crate::resolve_provisioning_base("0.1.0", None).unwrap();
         let next = crate::resolve_provisioning_base("999.0.0", None).unwrap();
         assert_eq!(first, next);
-        assert!(first.reference.ends_with("ayni-provisioning"));
+        assert_eq!(first.reference, "docker.io/library/debian:bookworm-slim");
         assert!(valid_digest(&first.digest));
         assert_eq!(first.mise_version, crate::BASE_MISE_VERSION);
     }

@@ -338,7 +338,7 @@ struct EnvLockOptions {
     /// Repository root where `.ayni.lock` will be written.
     #[arg(long, default_value = ".")]
     repo_root: PathBuf,
-    /// Exact environment base as `<reference>@sha256:<digest>`; otherwise resolve the release base with Docker Buildx.
+    /// Exact provisioning base as `<reference>@sha256:<digest>`; defaults to pinned upstream Debian.
     #[arg(long)]
     base: Option<String>,
 }
@@ -605,7 +605,7 @@ struct EnvBuildOptions {
     /// Repository containing the committed environment lock.
     #[arg(long, default_value = ".")]
     repo_root: PathBuf,
-    /// Use this immutable executor image without changing the environment lock.
+    /// Use this immutable builder image to supply Ayni without changing the environment lock.
     #[arg(long, value_name = "REFERENCE@sha256:DIGEST")]
     executor_image: Option<String>,
     /// Local tag applied to the built image. This does not publish it.

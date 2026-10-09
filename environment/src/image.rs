@@ -105,7 +105,7 @@ fn installation_digest(
     inventory: &ProvisioningInventory,
 ) -> Result<String, BackendError> {
     let inputs = serde_json::to_vec(&(
-        "installation-3",
+        "installation-4",
         platform,
         lock.provisioning_base(),
         lock.debian_packages(),
@@ -342,9 +342,10 @@ fn dockerfile(
     let debian_provisioning = debian_provisioning(lock.debian_packages());
     let base = lock.provisioning_base();
     let preparation = crate::preparation::dockerfile_fragment(lock, preparations)?;
+    let bootstrap = provisioning_bootstrap(lock.provisioning_base(), platform)?;
     Ok(format!(
         concat!(
-            "FROM {}@{} AS ayni-runtime\n{debian_provisioning}USER ayni\n",
+            "FROM {}@{} AS ayni-runtime\n{bootstrap}{debian_provisioning}USER ayni\n",
             "COPY --chown=10001:10001 runtime-mise.toml /etc/ayni/mise.toml\n",
             "RUN chmod 0444 /etc/ayni/mise.toml\n",
             "ENV MISE_TRUSTED_CONFIG_PATHS=/etc/ayni\nWORKDIR /etc/ayni\n",
@@ -378,6 +379,7 @@ fn dockerfile(
         base.mise_version,
         platform,
         preparation_digest,
+        bootstrap = bootstrap,
         debian_provisioning = debian_provisioning,
         mise_provisioning = mise_provisioning,
         node_package_manager_provisioning = node_package_manager_provisioning,
@@ -394,6 +396,45 @@ fn dockerfile(
         IMAGE_PREPARATION_LABEL = IMAGE_PREPARATION_LABEL,
         WORKSPACE = WORKSPACE,
     ))
+}
+
+pub(crate) fn uses_builtin_debian(base: &ayni_core::ProvisioningBase) -> bool {
+    crate::resolve_provisioning_base("", None).is_ok_and(|builtin| &builtin == base)
+}
+
+fn provisioning_bootstrap(
+    base: &ayni_core::ProvisioningBase,
+    platform: &str,
+) -> Result<String, BackendError> {
+    // Existing locks with a labelled substrate remain buildable. New locks use
+    // immutable upstream Debian and install Mise inside the generated build.
+    if !uses_builtin_debian(base) {
+        return Ok(String::new());
+    }
+    let architecture = platform
+        .strip_prefix("linux/")
+        .ok_or_else(|| BackendError::environment("provisioning requires a Linux platform"))?;
+    if !matches!(architecture, "amd64" | "arm64") {
+        return Err(BackendError::environment(
+            "unsupported provisioning architecture",
+        ));
+    }
+    let mut recipe =
+        include_str!("provisioning.Dockerfile.in").replace("@TARGETARCH@", architecture);
+    for name in ["MISE_VERSION", "MISE_SHA256_AMD64", "MISE_SHA256_ARM64"] {
+        let prefix = format!("{name}=");
+        let value = include_str!("../../.github/docker/provisioning.versions")
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix))
+            .ok_or_else(|| BackendError::environment("missing embedded provisioning input"))?;
+        if name == "MISE_VERSION" && value != base.mise_version {
+            return Err(BackendError::environment(
+                "embedded Mise version differs from the lock",
+            ));
+        }
+        recipe = recipe.replace(&format!("@{name}@"), value);
+    }
+    Ok(recipe)
 }
 
 fn mise_install_provisioning(inventory: &ProvisioningInventory) -> String {
@@ -547,6 +588,33 @@ mod tests {
     use ayni_core::{
         LockedRequirementSource, RequirementConfidence, SignalKind, ToolInstallationScope,
     };
+
+    #[test]
+    fn upstream_debian_bootstraps_pinned_mise_for_each_supported_architecture() {
+        let base = crate::resolve_provisioning_base("", None).unwrap();
+        for architecture in ["amd64", "arm64"] {
+            let recipe = provisioning_bootstrap(&base, &format!("linux/{architecture}")).unwrap();
+            assert!(recipe.contains(&format!("case \"{architecture}\"")));
+            assert!(recipe.contains("sha256sum --check --strict"));
+            assert!(recipe.contains(&format!("download/v{}/", base.mise_version)));
+            assert!(recipe.contains("useradd --uid 10001"));
+            assert!(!recipe.contains("@MISE_"));
+            assert!(!recipe.contains("docker-client"));
+        }
+        assert!(provisioning_bootstrap(&base, "linux/riscv64").is_err());
+    }
+
+    #[test]
+    fn existing_labelled_substrates_are_not_bootstrapped_twice() {
+        let mut base = crate::resolve_provisioning_base("", None).unwrap();
+        base.reference = "registry.example/existing-substrate".into();
+        assert!(!uses_builtin_debian(&base));
+        assert!(
+            provisioning_bootstrap(&base, "linux/amd64")
+                .unwrap()
+                .is_empty()
+        );
+    }
 
     #[test]
     fn installation_identity_excludes_policy_but_retains_abi_tools_and_platform() {

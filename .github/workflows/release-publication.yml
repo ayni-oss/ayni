@@ -1,4 +1,4 @@
-name: publish release binaries
+name: publish release binaries and builder
 
 on:
   workflow_call:
@@ -14,7 +14,7 @@ on:
         type: string
     outputs:
       executor_image:
-        description: Immutable, public release executor identity
+        description: Immutable, public release builder identity
         value: ${{ jobs.executor-manifest.outputs.executor_image }}
 
 permissions:
@@ -65,7 +65,10 @@ jobs:
           package_version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "ayni-cli") | .version')"
           test "$package_version" = "$EXPECTED_VERSION"
           if [[ "$TARGET" == *linux-gnu ]]; then
-            source .github/docker/ayni-env.versions
+            # Existing tags retain their original compiler inputs.
+            versions=.github/docker/ayni-builder.versions
+            test -f "$versions" || versions=.github/docker/ayni-env.versions
+            source "$versions"
             docker run --rm --user "$(id -u):$(id -g)" \
               --env CARGO_HOME=/tmp/cargo --volume "$PWD:/workspace" --workdir /workspace \
               "$RUST_BUILDER_IMAGE" cargo build --locked -p ayni-cli --release --target "$TARGET"
@@ -151,7 +154,7 @@ jobs:
         run: python3 scripts/ci/release_artifacts.py upload --tag "$TAG" --expected-source "$EXPECTED_COMMIT" --directory dist
 
   executor:
-    name: Publish release executor (${{ matrix.platform }})
+    name: Publish release builder (${{ matrix.platform }})
     needs: build
     strategy:
       fail-fast: false
@@ -177,24 +180,38 @@ jobs:
           ref: ${{ inputs.commit }}
           persist-credentials: false
 
+      - name: Checkout recovery factory recipe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: factory-source
+          persist-credentials: false
+
       - name: Download matching Linux archive
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-${{ matrix.target }}
           path: release
 
-      - name: Build and validate architecture executor
+      - name: Build and validate architecture builder
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-${{ matrix.suffix }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-builder:${{ inputs.version }}-${{ matrix.suffix }}
           PLATFORM: ${{ matrix.platform }}
           TAG: ${{ inputs.tag }}
           TARGET: ${{ matrix.target }}
           EXPECTED_VERSION: ${{ inputs.version }}
           EXPECTED_COMMIT: ${{ inputs.commit }}
+          WORKFLOW_COMMIT: ${{ github.workflow_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          source .github/docker/ayni-env.versions
+          recipe_root=.
+          recipe_revision="$EXPECTED_COMMIT"
+          if ! test -f .github/docker/ayni-builder.Dockerfile; then
+            recipe_root=factory-source
+            recipe_revision="$WORKFLOW_COMMIT"
+          fi
+          source "$recipe_root/.github/docker/ayni-builder.versions"
           archive="release/ayni-${TAG}-${TARGET}.tar.gz"
           test -f "$archive"
           mkdir executor
@@ -205,17 +222,20 @@ jobs:
             --build-arg "DEBIAN_IMAGE=$DEBIAN_IMAGE" \
             --build-arg "AYNI_VERSION=$EXPECTED_VERSION" \
             --build-arg "SOURCE_REVISION=$EXPECTED_COMMIT" \
-            --file .github/docker/ayni-candidate.Dockerfile --tag "$IMAGE" executor
+            --label "dev.ayni.builder.recipe-revision=$recipe_revision" \
+            --file "$recipe_root/.github/docker/ayni-builder.Dockerfile" --tag "$IMAGE" executor
           test "$(docker run --rm --platform "$PLATFORM" "$IMAGE" /usr/local/bin/ayni --version)" = "ayni ${EXPECTED_VERSION}"
+          docker run --rm --platform "$PLATFORM" "$IMAGE" docker --version
+          docker run --rm --platform "$PLATFORM" "$IMAGE" docker buildx version
           labels="$(docker image inspect "$IMAGE" --format '{{json .Config.Labels}}')"
           test "$(jq --raw-output '.["org.opencontainers.image.revision"]' <<<"$labels")" = "$EXPECTED_COMMIT"
           test "$(jq --raw-output '.["org.opencontainers.image.version"]' <<<"$labels")" = "$EXPECTED_VERSION"
           test "$(jq --raw-output '.["dev.ayni.executor.lock-schema"]' <<<"$labels")" = "0.9.0"
           test "$(jq --raw-output '.["dev.ayni.executor.recipe"]' <<<"$labels")" = "2"
 
-      - name: Publish architecture executor
+      - name: Publish architecture builder
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-${{ matrix.suffix }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-builder:${{ inputs.version }}-${{ matrix.suffix }}
           REGISTRY_TOKEN: ${{ github.token }}
         shell: bash
         run: |
@@ -224,7 +244,7 @@ jobs:
           docker push "$IMAGE"
 
   executor-manifest:
-    name: Publish immutable release executor
+    name: Publish immutable release builder
     needs: executor
     runs-on: ubuntu-24.04
     permissions:
@@ -234,12 +254,12 @@ jobs:
       executor_image: ${{ steps.publish.outputs.executor_image }}
 
     steps:
-      - name: Publish and validate public multi-architecture executor
+      - name: Publish and validate public multi-architecture builder
         id: publish
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian
-          AMD64_IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-amd64
-          ARM64_IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-env:${{ inputs.version }}-debian-arm64
+          IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-builder:${{ inputs.version }}
+          AMD64_IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-builder:${{ inputs.version }}-amd64
+          ARM64_IMAGE: ghcr.io/${{ github.repository_owner }}/ayni-builder:${{ inputs.version }}-arm64
           EXPECTED_VERSION: ${{ inputs.version }}
           EXPECTED_COMMIT: ${{ inputs.commit }}
           REGISTRY_TOKEN: ${{ github.token }}

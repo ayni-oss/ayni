@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-versions_file="$repo_root/.github/docker/ayni-env.versions"
+versions_file="$repo_root/.github/docker/ayni-builder.versions"
 # shellcheck disable=SC1090
 source "$versions_file"
 
@@ -30,11 +30,11 @@ docker run --rm \
   "$RUST_BUILDER_IMAGE" \
   cargo build --locked -p ayni-cli --release
 
-context="$(mktemp -d "${TMPDIR:-/tmp}/ayni-env-context.XXXXXX")"
+context="$(mktemp -d "${TMPDIR:-/tmp}/ayni-builder-context.XXXXXX")"
 trap 'rm -rf "$context"' EXIT
 cp "$repo_root/target/release/ayni" "$context/ayni"
 cp "$repo_root/LICENSE" "$context/"
-cp "$repo_root/.github/docker/ayni-env.Dockerfile" "$context/"
+cp "$repo_root/.github/docker/ayni-builder.Dockerfile" "$context/"
 
 docker build \
   --provenance=false \
@@ -42,20 +42,17 @@ docker build \
   --build-arg "DEBIAN_IMAGE=$DEBIAN_IMAGE" \
   --build-arg "AYNI_VERSION=$ayni_version" \
   --build-arg "SOURCE_REVISION=$source_revision" \
-  --build-arg "MISE_VERSION=$MISE_VERSION" \
-  --build-arg "MISE_SHA256_AMD64=$MISE_SHA256_AMD64" \
-  --build-arg "MISE_SHA256_ARM64=$MISE_SHA256_ARM64" \
-  --file "$context/ayni-env.Dockerfile" \
-  --tag ayni-env:local \
+  --file "$context/ayni-builder.Dockerfile" \
+  --tag ayni-builder:local \
   "$context"
 
-base_id="$(docker image inspect ayni-env:local --format '{{.Id}}')"
-base_reference="$(docker image inspect ayni-env:local --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}')"
+base_id="$(docker image inspect ayni-builder:local --format '{{.Id}}')"
+base_reference="$(docker image inspect ayni-builder:local --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}')"
 case "$base_reference" in
   */*@sha256:*) ;;
   *) base_reference='' ;;
 esac
-printf '\nBuilt ayni-env:local (%s)\n' "$base_id"
+printf '\nBuilt ayni-builder:local (%s)\n' "$base_id"
 if [[ -n "$base_reference" ]]; then
   printf 'Next: cargo run -p ayni-cli -- env build --executor-image "%s"\n' "$base_reference"
 else

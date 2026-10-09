@@ -32,6 +32,10 @@ def main() -> int:
     docs = DOCS_WORKFLOW.read_text()
     publication = (WORKFLOW.parent / "release-publication.yml").read_text()
     errors: list[str] = []
+    require(errors,
+            sorted(path.name for path in (ROOT / ".github/docker").glob("*.Dockerfile"))
+            == ["ayni-builder.Dockerfile"],
+            "Ayni must maintain one publishable image recipe: ayni-builder")
 
     try:
         release = job_block(source, "release")
@@ -117,16 +121,18 @@ def main() -> int:
             and "ubuntu-24.04-arm" in executor
             and "x86_64-unknown-linux-gnu" in executor
             and "aarch64-unknown-linux-gnu" in executor
-            and "ayni-env:${{ inputs.version }}-debian-${{ matrix.suffix }}" in executor
-            and "ayni-candidate.Dockerfile" in executor
+            and "ayni-builder:${{ inputs.version }}-${{ matrix.suffix }}" in executor
+            and "ayni-builder.Dockerfile" in executor
+            and '"$IMAGE" docker --version' in executor
+            and '"$IMAGE" docker buildx version' in executor
             and 'docker push "$IMAGE"' in executor
             and "docker buildx imagetools create" in executor_manifest
-            and "ayni-env:${{ inputs.version }}-debian" in executor_manifest
+            and "ayni-builder:${{ inputs.version }}" in executor_manifest
             and "linux/amd64" in executor_manifest
             and "linux/arm64" in executor_manifest
             and 'docker logout ghcr.io || true' in executor_manifest
             and 'echo "executor_image=$IMAGE@$digest"' in executor_manifest,
-            "release publication must publish and validate a public immutable multi-architecture executor")
+            "release publication must publish and validate the versioned multi-architecture builder")
     require(errors,
             "tags:\n      - 'ayni-v*'" in docs
             and "branches:" not in docs
@@ -143,7 +149,7 @@ def main() -> int:
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print("release workflow publishes source-bound binaries and a multi-architecture executor")
+    print("release workflow publishes source-bound binaries and one versioned multi-architecture builder")
     return 0
 
 
