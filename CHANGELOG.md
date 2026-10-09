@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.5...ayni-v0.15.0) (2026-10-09)
+
+
+### Features
+
+* **environment:** publish one versioned Ayni builder image ([#73](https://github.com/ayni-oss/ayni/issues/73)) ([0c6e582](https://github.com/ayni-oss/ayni/commit/0c6e582207f084363c1e8860ff0928c5d19d9f53))
+
 ## [0.14.5](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.4...ayni-v0.14.5) (2026-10-03)
 
 
