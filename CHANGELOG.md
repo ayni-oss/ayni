@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.15.0...ayni-v0.16.0) (2026-10-10)
+
+
+### Features
+
+* **ayni:** update environment signing trust ([#77](https://github.com/ayni-oss/ayni/issues/77)) ([8f0f46a](https://github.com/ayni-oss/ayni/commit/8f0f46a4a7aef649c678e2bdfef85333ca56705a))
+
 ## [0.15.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.5...ayni-v0.15.0) (2026-10-09)
 
 
