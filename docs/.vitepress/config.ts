@@ -13,6 +13,7 @@ export default withMermaid(defineConfig({
     /^https:\/\/example\.com/,
   ],
   themeConfig: {
+    siteTitle: false,
     nav: [
       { text: 'Getting Started', link: '/getting-started/quickstart' },
       {

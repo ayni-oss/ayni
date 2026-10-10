@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/public/ayni-logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/public/ayni-logo.svg">
+  <img alt="Ayni logo" src="docs/public/ayni-logo.svg" width="96" height="96">
+</picture>
+
 # Ayni
 
 Ayni is a local quality protocol for repositories that use AI agents.
