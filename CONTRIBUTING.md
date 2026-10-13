@@ -52,6 +52,17 @@ managed default without `--host`. Focused runs write only
 `.ayni/verify/last/signals.json`. Re-run the exact `verification.command`
 attached to a finding when one is available.
 
+## Shared CI
+
+CI uses the public composite actions in `.github/actions/`
+for locked Node dependencies, project files, PR metadata, quality feedback and
+managed Ayni execution. Ayni checks use local actions with read-only permissions;
+write-enabled metadata and feedback jobs use immutable source revisions without
+checking out PR code. Consumers pin that same revision with a `shared CI` comment.
+Keep repository-specific Rust, protocol, deployment and documentation checks in
+their owning workflows. Run `node --test scripts/ci/test-shared-actions.cjs` and
+the workflow validators after changing shared actions.
+
 ## Documentation
 
 The docs site lives under `docs/` and uses the root npm scripts. Branding uses

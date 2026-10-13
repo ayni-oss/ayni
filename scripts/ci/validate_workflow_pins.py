@@ -9,8 +9,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-USES = re.compile(r"^\s*uses:\s*([^\s#]+)(?:\s+#\s*(\S.*))?$")
+USES = re.compile(r"^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#\s*(\S.*))?$")
 PINNED = re.compile(r".+@[0-9a-f]{40}$")
+SHARED = re.compile(r"ayni-oss/ayni/\.github/actions/[a-z-]+@[0-9a-f]{40}$")
 VERSION = re.compile(r"v?\d+(?:\.\d+){1,2}")
 
 
@@ -29,7 +30,8 @@ def main() -> int:
             location = f"{workflow.relative_to(ROOT)}:{line_number}"
             if not PINNED.fullmatch(reference):
                 errors.append(f"{location}: external action is not pinned: {reference}")
-            if not version or not VERSION.fullmatch(version.strip()):
+            shared = SHARED.fullmatch(reference) and version == "shared CI"
+            if not shared and (not version or not VERSION.fullmatch(version.strip())):
                 errors.append(
                     f"{location}: pinned action needs an exact version comment "
                     "such as v4.4.0"
@@ -38,7 +40,7 @@ def main() -> int:
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print("all external GitHub Actions are SHA-pinned with version comments")
+    print("all external GitHub Actions are SHA-pinned with release or shared CI comments")
     return 0
 
 

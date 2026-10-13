@@ -9,6 +9,37 @@ missing tools produce setup guidance. In an Ayni image, `/etc/ayni/runtime.json`
 is verified against the attached checkout's lock and protected tool inventory
 before locked tool activation is applied.
 
+## Reusing an environment in CI
+
+The [managed-check action](https://github.com/ayni-oss/ayni/tree/main/.github/actions/managed-check)
+looks for `ghcr.io/<owner>/<repository>:ayni-<lock fingerprint>` before building.
+The tag uses all 64 fingerprint characters, without the `sha256:` prefix.
+Supply the Ayni executable that CI intends to test; cached images must contain
+those exact bytes. A matching version number alone is insufficient.
+
+```mermaid
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
+flowchart TD
+    A["Pull the locked<br/>repository image"] --> B{"Identity and<br/>runtime valid?"}
+    B -->|Yes| D["Run the managed<br/>quality check"]
+    B -->|No| C["Build the locked<br/>environment locally"]
+    C --> D
+    D --> E["Keep the report<br/>and JSON evidence"]
+```
+
+The action validates the platform, lock, executable and runtime certificate,
+then uses an immutable image ID for the quality run. Missing or rejected images
+fall back to the existing local build. Quality failures remain failures and
+retain their evidence; they do not cause a second build. The action only reads
+the registry and never publishes an image. Pin external action uses to a
+reviewed commit SHA and upload the report and `.ayni/last/signals.json` even
+when a check fails.
+
 ## Lifecycle
 
 ```sh
