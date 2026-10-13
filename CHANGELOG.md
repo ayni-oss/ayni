@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.15.0...ayni-v0.16.0) (2026-10-13)
+
+
+### Features
+
+* **ayni:** update environment signing trust ([#77](https://github.com/ayni-oss/ayni/issues/77)) ([8f0f46a](https://github.com/ayni-oss/ayni/commit/8f0f46a4a7aef649c678e2bdfef85333ca56705a))
+
+
+### Bug Fixes
+
+* **docs:** align branding and consolidate CI validation ([#84](https://github.com/ayni-oss/ayni/issues/84)) ([70f9bb2](https://github.com/ayni-oss/ayni/commit/70f9bb25da0da865ab9b6f94f717362099756e22))
+
 ## [0.15.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.14.5...ayni-v0.15.0) (2026-10-09)
 
 
