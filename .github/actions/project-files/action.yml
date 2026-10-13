@@ -1,0 +1,20 @@
+name: Public project files
+description: Check public governance and security files plus repository-specific documentation
+inputs:
+  additional-files:
+    description: Additional required relative paths, one per line
+    default: ''
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        ADDITIONAL_FILES: ${{ inputs.additional-files }}
+      run: |
+        for path in SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md GOVERNANCE.md MAINTAINERS.md ROADMAP.md .github/dco.yml; do
+          test -f "$path" || { echo "Required project file is missing: $path" >&2; exit 1; }
+        done
+        while IFS= read -r path; do
+          test -z "$path" && continue
+          test -f "$path" || { echo "Required project file is missing: $path" >&2; exit 1; }
+        done <<< "$ADDITIONAL_FILES"

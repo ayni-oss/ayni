@@ -1,0 +1,40 @@
+name: Managed Ayni repository check
+description: Reuse an exact GHCR environment or build it, then require complete managed evidence
+inputs:
+  cli:
+    description: Path to the intended Linux Ayni executable
+    required: true
+  executor-image:
+    description: Optional immutable executor reference for a checkout-built CLI
+    default: ''
+  repository:
+    description: Base repository owner/name used for the GHCR lookup
+    required: true
+  platform:
+    description: Managed image platform
+    default: linux/amd64
+  report-path:
+    description: Markdown report destination; defaults to runner.temp/ayni.md
+    default: ''
+outputs:
+  image:
+    description: Immutable Docker image ID actually used
+    value: ${{ steps.check.outputs.image }}
+  source:
+    description: cache or build
+    value: ${{ steps.check.outputs.source }}
+  report-path:
+    description: Markdown report destination
+    value: ${{ steps.check.outputs.report-path }}
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        AYNI_CI_CLI: ${{ inputs.cli }}
+        AYNI_CI_EXECUTOR: ${{ inputs.executor-image }}
+        AYNI_CI_REPOSITORY: ${{ inputs.repository }}
+        AYNI_CI_PLATFORM: ${{ inputs.platform }}
+        AYNI_CI_REPORT: ${{ inputs.report-path }}
+      run: bash "$GITHUB_ACTION_PATH/run.sh"

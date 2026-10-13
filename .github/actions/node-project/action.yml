@@ -1,0 +1,43 @@
+name: Locked Node project
+description: Set up the selected Node package manager and install committed dependencies
+inputs:
+  package-manager:
+    description: npm or pnpm
+    required: true
+  node-version:
+    description: Exact Node version
+    required: true
+  pnpm-version:
+    description: Exact pnpm version when selected
+    default: '10.31.0'
+runs:
+  using: composite
+  steps:
+    - name: Validate package manager
+      shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+      run: |
+        case "$PACKAGE_MANAGER" in
+          npm|pnpm) ;;
+          *) echo 'package-manager must be npm or pnpm' >&2; exit 1 ;;
+        esac
+    - if: ${{ inputs.package-manager == 'pnpm' }}
+      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      with:
+        version: ${{ inputs.pnpm-version }}
+        run_install: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.package-manager }}
+    - name: Install committed dependencies
+      shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+      run: |
+        if test "$PACKAGE_MANAGER" = npm; then
+          npm ci
+        else
+          pnpm install --frozen-lockfile
+        fi
