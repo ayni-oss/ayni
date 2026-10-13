@@ -54,12 +54,22 @@ attached to a finding when one is available.
 
 ## Documentation
 
-The docs site lives under `docs/` and uses the root npm scripts:
+The docs site lives under `docs/` and uses the root npm scripts. Branding uses
+an inline copy of the canonical Ayni SVG and a favicon that follows the browser's
+light/dark preference. Mermaid diagrams use neutral/classic/ELK configuration;
+wide diagrams retain readable text and scroll instead of shrinking.
+
+The theme disables Mermaid's automatic loader before waiting for ELK. Components
+render the authored source, avoiding a syntax-error flash from empty containers.
+`docs:check` validates that startup guard, diagram configuration, the built logo
+and favicon, plus VitePress links. Documentation remains tied to released CLI tags.
+
+Use:
 
 ```sh
 npm install
 npm run docs:dev
-npm run docs:build
+npm run docs:check
 npm run docs:preview
 ```
 

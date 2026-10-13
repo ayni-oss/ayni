@@ -48,6 +48,24 @@ jobs:
           test -f ROADMAP.md
           test -f .github/dco.yml
 
+  documentation:
+    name: Documentation branding and diagrams
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - run: npm ci
+      - run: npm run docs:check
+
   product:
     name: Product integration checks
     runs-on: ubuntu-24.04
@@ -197,11 +215,12 @@ jobs:
   complete:
     name: Required completion
     if: ${{ !cancelled() }}
-    needs: [metadata, cncf, product, ayni]
+    needs: [metadata, cncf, documentation, product, ayni]
     runs-on: ubuntu-24.04
     steps:
       - run: |
           test '${{ needs.metadata.result }}' = success
           test '${{ needs.cncf.result }}' = success
+          test '${{ needs.documentation.result }}' = success
           test '${{ needs.product.result }}' = success
           test '${{ needs.ayni.result }}' = success
