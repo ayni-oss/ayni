@@ -2,10 +2,17 @@
 
 Ayni separates quality policy from runtime provisioning, then joins them when a signal is executed.
 
-```text
-Quality contract       Managed environment       Signal execution
-.ayni.toml          +  .ayni.lock / OCI image  → check / verify / impact
-"What is healthy?"    "Where does it run?"       "What did we measure?"
+```mermaid
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
+flowchart TD
+    P[Committed quality policy] --> R[Run repository quality tools]
+    E[Exact tools and dependencies] --> R
+    R --> F[Scoped quality evidence]
 ```
 
 That separation gives reviewers three explicit questions instead of one opaque script:
@@ -57,20 +64,19 @@ A managed environment is derived from:
 
 `ayni env show` explains that derived plan without modifying state. `ayni env lock` resolves it into `.ayni.lock`, and `ayni env build` turns the lock into an OCI image with prepared dependencies.
 
-```text
-.ayni.toml + native project metadata
-                 │
-                 ▼
-          ayni env show
-                 │
-                 ▼
-          ayni env lock ───────→ .ayni.lock
-                                      │
-                                      ▼
-                               ayni env build
-                                      │
-                                      ▼
-                              local OCI image
+```mermaid
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
+flowchart TD
+    P[Policy and native project metadata] --> S[Explain the environment plan]
+    S --> L[Resolve and commit the lock]
+    L --> F[Exact tool and dependency identities]
+    F --> B[Build the environment]
+    B --> I[Portable OCI image]
 ```
 
 Ayni does not silently lock or rebuild during a quality run. Changes to versions, dependencies, tools, capabilities, or preparation inputs therefore remain visible in the lock and image lifecycle.

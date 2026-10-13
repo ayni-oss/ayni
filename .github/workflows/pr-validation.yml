@@ -13,23 +13,16 @@ permissions: {}
 
 jobs:
   metadata:
-    name: Conventional title
+    name: PR metadata
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: read
     steps:
       - name: Validate title
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const title = context.payload.pull_request.title.trim();
-            const pattern = /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\(([a-z0-9][a-z0-9._/-]*)\))?(!)?: \S(?:.*\S)?$/;
-            if (!pattern.test(title)) {
-              core.setFailed(`PR title must match Conventional Commits; received: ${title}`);
-            }
+        uses: ayni-oss/ayni/.github/actions/pr-metadata@82966446499f11f5668dd314a432c8ab74788c3d # shared CI
 
   cncf:
-    name: CNCF requirements
+    name: Project requirements
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -39,17 +32,30 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - run: |
-          test -f SECURITY.md
-          test -f CONTRIBUTING.md
-          test -f CODE_OF_CONDUCT.md
-          test -f GOVERNANCE.md
-          test -f MAINTAINERS.md
-          test -f ROADMAP.md
-          test -f .github/dco.yml
+      - name: Verify required project files
+        uses: ./.github/actions/project-files
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Set up locked documentation dependencies
+        uses: ./.github/actions/node-project
+        with:
+          package-manager: npm
+          node-version: 22.12.0
+      - run: node --test scripts/ci/test-shared-actions.cjs
+      - run: npm run docs:check
 
   product:
-    name: Product integration checks
+    name: Tests and tooling
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -69,15 +75,20 @@ jobs:
           cargo clippy --workspace --all-targets --all-features -- -D warnings
           cargo test --workspace --all-features
           python3 scripts/ci/validate_release_workflow.py
+          python3 scripts/ci/validate_workflow_pins.py
           python3 -m unittest discover -s scripts/ci -p test_release_executor.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/actions/managed-check -p 'test_*.py'
 
   ayni:
-    name: Ayni repository contract
+    name: Ayni quality
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
     steps:
+      - name: Initialize report
+        run: printf 'Ayni did not produce a report. See the workflow log for details.\n' > "$RUNNER_TEMP/ayni.md"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
@@ -97,26 +108,12 @@ jobs:
             sleep 1
           done
           python3 scripts/ci/candidate.py import --directory .ayni/ci-candidate --source "$SOURCE" --platform "$PLATFORM" --run-id "$GITHUB_RUN_ID"
-      - name: Build and use the repository environment
-        env:
-          AYNI: ${{ steps.candidate.outputs.cli }}
-          EXECUTOR: ${{ steps.candidate.outputs.executor }}
-        run: |
-          set -euo pipefail
-          "$AYNI" env build --repo-root . --executor-image "$EXECUTOR"
-          image="$(jq --raw-output .image_tag .ayni/environment/build.json)"
-          docker run --rm --user "$(id -u):$(id -g)" \
-            --env HOME=/tmp/home \
-            --env XDG_CACHE_HOME=/tmp/cache \
-            --env MISE_CACHE_DIR=/tmp/mise \
-            --env CARGO_HOME=/tmp/cargo \
-            --env CARGO_TARGET_DIR=/tmp/target \
-            --env npm_config_cache=/tmp/npm \
-            --env GRADLE_USER_HOME=/tmp/gradle \
-            --env UV_CACHE_DIR=/tmp/uv \
-            --mount "type=bind,source=$PWD,target=/workspace" \
-            --workdir /workspace \
-            "$image" ayni check --config .ayni.toml --output markdown | tee "$RUNNER_TEMP/ayni.md"
+      - name: Reuse or build the locked repository environment
+        uses: ./.github/actions/managed-check
+        with:
+          cli: ${{ steps.candidate.outputs.cli }}
+          executor-image: ${{ steps.candidate.outputs.executor }}
+          repository: ${{ github.repository }}
       - name: Upload Ayni JSON evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -136,72 +133,27 @@ jobs:
           retention-days: 1
 
   report:
-    name: Ayni PR comment
+    name: Ayni report
     needs: ayni
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: write
     steps:
-      - name: Download Ayni report
-        continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ayni-pr-report
-          path: ${{ runner.temp }}/ayni-report
-
       - name: Create or update Ayni comment
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          REPORT_PATH: ${{ runner.temp }}/ayni-report/ayni.md
-          AYNI_RESULT: ${{ needs.ayni.result }}
+        uses: ayni-oss/ayni/.github/actions/quality-report@82966446499f11f5668dd314a432c8ab74788c3d # shared CI
         with:
-          script: |
-            const fs = require('fs');
-            const marker = '<!-- ayni-signals -->';
-            const result = process.env.AYNI_RESULT;
-            const status = result === 'success' ? 'passed' : result;
-            let report = 'Ayni did not produce a report. See the workflow log for details.\n';
-            if (fs.existsSync(process.env.REPORT_PATH)) {
-              report = fs.readFileSync(process.env.REPORT_PATH, 'utf8');
-            }
-            if (report.length > 60_000) {
-              report = `${report.slice(0, 60_000)}\n\n_Report truncated; see the workflow log for the full result._\n`;
-            }
-            const body = `${marker}\n## Ayni: ${status}\n\n${report}`;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              per_page: 100,
-            });
-            const existing = comments.find(
-              (comment) => comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker),
-            );
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
+          result: ${{ needs.ayni.result }}
 
   complete:
-    name: Required completion
+    name: CI result
     if: ${{ !cancelled() }}
-    needs: [metadata, cncf, product, ayni]
+    needs: [metadata, cncf, documentation, product, ayni]
     runs-on: ubuntu-24.04
     steps:
       - run: |
           test '${{ needs.metadata.result }}' = success
           test '${{ needs.cncf.result }}' = success
+          test '${{ needs.documentation.result }}' = success
           test '${{ needs.product.result }}' = success
           test '${{ needs.ayni.result }}' = success

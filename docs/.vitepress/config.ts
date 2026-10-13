@@ -7,6 +7,16 @@ export default withMermaid(defineConfig({
   title: 'Ayni',
   description: 'Reproducible quality signals for repositories and coding agents.',
   base,
+  mermaid: {
+    startOnLoad: false,
+    theme: 'neutral',
+    look: 'classic',
+    layout: 'elk',
+    htmlLabels: false,
+    flowchart: { padding: 16, wrappingWidth: 180, useMaxWidth: false },
+  },
+  sitemap: { hostname: 'https://cli.ayni.build' },
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}favicon.svg` }]],
   lastUpdated: true,
   cleanUrls: true,
   ignoreDeadLinks: [

@@ -1,0 +1,17 @@
+name: Conventional pull request metadata
+description: Validate Conventional Commit titles and optionally maintain kind labels
+inputs:
+  kind-labels:
+    description: Maintain the established kind labels (requires issues and pull-requests write)
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        KIND_LABELS: ${{ inputs.kind-labels }}
+      with:
+        script: |
+          const { applyMetadata } = require(`${process.env.ACTION_PATH}/metadata.cjs`);
+          await applyMetadata({ github, context, core, kindLabels: process.env.KIND_LABELS === 'true' });

@@ -36,17 +36,24 @@ features:
 
 ## The core model
 
-```text
-Quality contract       Managed environment       Signal execution
-.ayni.toml          +  .ayni.lock / OCI image  → check / verify / impact
-"What is healthy?"    "Where does it run?"       "What did we measure?"
+```mermaid
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
+flowchart TD
+    P[Committed quality policy] --> R[Run repository quality tools]
+    E[Exact tools and dependencies] --> R
+    R --> F[Scoped quality evidence]
 ```
 
 Ayni keeps these responsibilities separate and reviewable:
 
 1. **Define policy.** `.ayni.toml` selects languages, signals, thresholds, structural rules, and optional runtime capabilities.
 2. **Lock execution.** `.ayni.lock` records exact tools, native dependency inputs, preparation state, and an immutable base image.
-3. **Measure code.** `check`, `verify`, and `impact run` launch managed environments automatically and produce normalized evidence.
+3. **Measure code.** `check`, `verify`, and `impact run` measure the current workspace and produce normalized evidence.
 
 Installing the CLI is separate from provisioning a repository environment. Ayni never silently creates a lock or rebuilds an image during a quality run.
 

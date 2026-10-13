@@ -30,6 +30,7 @@ def require(errors: list[str], condition: bool, message: str) -> None:
 def main() -> int:
     source = WORKFLOW.read_text()
     docs = DOCS_WORKFLOW.read_text()
+    node_setup = (ROOT / ".github/actions/node-project/action.yml").read_text()
     publication = (WORKFLOW.parent / "release-publication.yml").read_text()
     errors: list[str] = []
     require(errors,
@@ -137,7 +138,10 @@ def main() -> int:
             "tags:\n      - 'ayni-v*'" in docs
             and "branches:" not in docs
             and "cargo doc-cli > docs/cli.md" in docs
-            and "npm ci" in docs
+            and "uses: ./.github/actions/node-project" in docs
+            and "package-manager: npm" in docs
+            and "npm ci" in node_setup
+            and "package-manager" in node_setup
             and "npm run docs:build" in docs
             and "VITEPRESS_BASE: /" in docs
             and "actions/upload-pages-artifact@" in docs

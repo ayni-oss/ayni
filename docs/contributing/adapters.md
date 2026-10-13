@@ -27,6 +27,12 @@ The CLI can therefore evaluate every configured language with one orchestration
 path and reconcile every result with one completion model.
 
 ```mermaid
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
 flowchart LR
   Policy[".ayni.toml"] --> Targets["Language/root targets and enabled signals"]
   Targets --> Registry["AdapterRegistry"]
@@ -68,6 +74,12 @@ must not contain backend-specific image, engine, mount, or cache logic.
 Keep both dependency paths one-way:
 
 ```mermaid
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
 flowchart RL
   CLI["cli"] --> Adapter["adapters/&lt;language&gt;"]
   CLI --> Backend["environment backend"]
@@ -111,6 +123,12 @@ For a complete `ayni check`:
 8. it writes one repository-level `RunArtifact`.
 
 ```mermaid
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
 flowchart TD
   Command["ayni check"] --> Mode{"Execution mode"}
   Mode -->|managed| Managed["Backend launches repository from current lock"]

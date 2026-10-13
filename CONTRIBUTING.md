@@ -52,14 +52,35 @@ managed default without `--host`. Focused runs write only
 `.ayni/verify/last/signals.json`. Re-run the exact `verification.command`
 attached to a finding when one is available.
 
+## Shared CI
+
+CI uses the public composite actions in `.github/actions/`
+for locked Node dependencies, project files, PR metadata, quality feedback and
+managed Ayni execution. Ayni checks use local actions with read-only permissions;
+write-enabled metadata and feedback jobs use immutable source revisions without
+checking out PR code. Consumers pin that same revision with a `shared CI` comment.
+Keep repository-specific Rust, protocol, deployment and documentation checks in
+their owning workflows. Run `node --test scripts/ci/test-shared-actions.cjs` and
+the workflow validators after changing shared actions.
+
 ## Documentation
 
-The docs site lives under `docs/` and uses the root npm scripts:
+The docs site lives under `docs/` and uses the root npm scripts. Branding uses
+an inline copy of the canonical Ayni SVG and a favicon that follows the browser's
+light/dark preference. Mermaid diagrams use neutral/classic/ELK configuration;
+wide diagrams retain readable text and scroll instead of shrinking.
+
+The theme disables Mermaid's automatic loader before waiting for ELK. Components
+render the authored source, avoiding a syntax-error flash from empty containers.
+`docs:check` validates that startup guard, diagram configuration, the built logo
+and favicon, plus VitePress links. Documentation remains tied to released CLI tags.
+
+Use:
 
 ```sh
 npm install
 npm run docs:dev
-npm run docs:build
+npm run docs:check
 npm run docs:preview
 ```
 
