@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build tagged documentation
+    name: Build documentation
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -55,7 +55,7 @@ jobs:
           path: docs/.vitepress/dist
 
   deploy:
-    name: Deploy tagged documentation
+    name: Deploy documentation
     needs: build
     runs-on: ubuntu-24.04
     permissions:

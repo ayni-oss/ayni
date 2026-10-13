@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   metadata:
-    name: Conventional title
+    name: PR metadata
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: read
@@ -22,7 +22,7 @@ jobs:
         uses: ayni-oss/ayni/.github/actions/pr-metadata@82966446499f11f5668dd314a432c8ab74788c3d # shared CI
 
   cncf:
-    name: CNCF requirements
+    name: Project requirements
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -36,7 +36,7 @@ jobs:
         uses: ./.github/actions/project-files
 
   documentation:
-    name: Documentation branding and diagrams
+    name: Documentation
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -55,7 +55,7 @@ jobs:
       - run: npm run docs:check
 
   product:
-    name: Product integration checks
+    name: Tests and tooling
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -80,7 +80,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/actions/managed-check -p 'test_*.py'
 
   ayni:
-    name: Ayni repository contract
+    name: Ayni quality
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -133,7 +133,7 @@ jobs:
           retention-days: 1
 
   report:
-    name: Ayni PR comment
+    name: Ayni report
     needs: ayni
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
@@ -146,7 +146,7 @@ jobs:
           result: ${{ needs.ayni.result }}
 
   complete:
-    name: Required completion
+    name: CI result
     if: ${{ !cancelled() }}
     needs: [metadata, cncf, documentation, product, ayni]
     runs-on: ubuntu-24.04
