@@ -70,6 +70,11 @@ an inline copy of the canonical Ayni SVG and a favicon that follows the browser'
 light/dark preference. Mermaid diagrams use neutral/classic/ELK configuration;
 wide diagrams retain readable text and scroll instead of shrinking.
 
+ELK 1 requires Mermaid 12. The scoped `vitepress-plugin-mermaid` npm override
+keeps the plugin on that same Mermaid instance while its declared peer range
+still stops at Mermaid 11. Recheck the plugin's peer range when upgrading it;
+remove the override once it declares Mermaid 12 support.
+
 The theme disables Mermaid's automatic loader before waiting for ELK. Components
 render the authored source, avoiding a syntax-error flash from empty containers.
 `docs:check` validates that startup guard, diagram configuration, the built logo
