@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/ayni-oss/ayni/compare/ayni-v0.16.1...ayni-v0.16.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **docs:** align navigation and inherit diagram color mode ([#99](https://github.com/ayni-oss/ayni/issues/99)) ([bcf07c7](https://github.com/ayni-oss/ayni/commit/bcf07c7523afaed73766e5d96134482a1e0a9f3c))
+
 ## [0.16.1](https://github.com/ayni-oss/ayni/compare/ayni-v0.16.0...ayni-v0.16.1) (2026-10-16)
 
 
