@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 root = Path(__file__).resolve().parents[2]
-header = '---\nconfig:\n  theme: neutral\n  look: classic\n  layout: elk\n---\n'
+header = '---\nconfig:\n  look: classic\n  layout: elk\n---\n'
 diagrams = 0
 for source in (root / 'docs').rglob('*.md'):
     if '.vitepress' in source.parts:
@@ -12,7 +12,7 @@ for source in (root / 'docs').rglob('*.md'):
     for diagram in re.findall(r'```mermaid\n(.*?)```', source.read_text(), flags=re.S):
         diagrams += 1
         if not diagram.startswith(header):
-            raise SystemExit(f'{source.relative_to(root)}: diagram must use neutral/classic/elk')
+            raise SystemExit(f'{source.relative_to(root)}: diagram must use classic/elk with the site color theme')
 output = root / 'docs/.vitepress/dist'
 home = (output / 'index.html').read_text()
 if 'ayni-brand-mark' not in home or '<svg' not in home:

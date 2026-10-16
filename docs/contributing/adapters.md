@@ -29,7 +29,6 @@ path and reconcile every result with one completion model.
 ```mermaid
 ---
 config:
-  theme: neutral
   look: classic
   layout: elk
 ---
@@ -76,7 +75,6 @@ Keep both dependency paths one-way:
 ```mermaid
 ---
 config:
-  theme: neutral
   look: classic
   layout: elk
 ---
@@ -125,7 +123,6 @@ For a complete `ayni check`:
 ```mermaid
 ---
 config:
-  theme: neutral
   look: classic
   layout: elk
 ---

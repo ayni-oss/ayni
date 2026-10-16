@@ -1,3 +1,56 @@
+/* Indigo identifies the Ayni CLI. */
+:root {
+  --vp-c-brand-1: #4f46e5;
+  --vp-c-brand-2: #6366f1;
+  --vp-c-brand-3: #4f46e5;
+  --vp-c-brand-soft: rgb(99 102 241 / 14%);
+}
+.dark {
+  --vp-c-brand-1: #a5b4fc;
+  --vp-c-brand-2: #818cf8;
+  --vp-c-brand-3: #4f46e5;
+  --vp-c-brand-soft: rgb(129 140 248 / 16%);
+}
+
+/* Keep the desktop menu beside the brand and search on the right. */
+@media (min-width: 768px) {
+  .VPNavBar .content-body { justify-content: flex-start; }
+  .VPNavBar .menu { order: -1; padding-left: 24px; }
+  .VPNavBar .VPNavBarSearch {
+    flex-grow: 0;
+    margin-left: auto;
+    padding-left: 16px;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPNav .VPNavBar.has-sidebar { background-color: var(--vp-nav-bg-color); }
+  .VPNav .VPNavBar.has-sidebar .container > .title {
+    position: static;
+    width: auto;
+    padding: 0;
+  }
+  .VPNav .VPNavBar.has-sidebar > .wrapper { padding: 0 32px; }
+  .VPNav .VPNavBar.has-sidebar .wrapper > .container {
+    max-width: calc(var(--vp-layout-max-width) - 64px);
+  }
+  .VPNav .VPNavBar.has-sidebar .container > .content { padding: 0; }
+  .VPNavBarTitle.has-sidebar .title { border-bottom-color: transparent; }
+}
+
+/* Leave room for the menu on smaller desktop screens. */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .VPNavBar .menu { padding-left: 12px; }
+  .VPNavBar .VPNavBarMenuLink,
+  .VPNavBar .VPNavBarMenuGroup .button { padding: 0 8px; }
+  .VPNavBar .DocSearch-Button { width: 40px; padding: 0; justify-content: center; }
+  .VPNavBar .DocSearch-Search-Icon { margin: 0; }
+  .VPNavBar .DocSearch-Button-Placeholder,
+  .VPNavBar .DocSearch-Button-Keys { display: none; }
+}
+
+.VPNavBarTitle .ayni-brand { color: var(--vp-c-brand-1); }
+
 .ayni-home-heading {
   display: flex;
   flex-direction: column;
@@ -52,7 +105,7 @@
   margin: 24px 0;
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
-  background: #fff;
+  background: var(--vp-c-bg-soft);
 }
 
 .mermaid svg {

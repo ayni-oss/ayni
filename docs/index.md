@@ -39,7 +39,6 @@ features:
 ```mermaid
 ---
 config:
-  theme: neutral
   look: classic
   layout: elk
 ---

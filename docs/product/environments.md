@@ -20,7 +20,6 @@ those exact bytes. A matching version number alone is insufficient.
 ```mermaid
 ---
 config:
-  theme: neutral
   look: classic
   layout: elk
 ---

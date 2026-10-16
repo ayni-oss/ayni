@@ -67,8 +67,9 @@ the workflow validators after changing shared actions.
 
 The docs site lives under `docs/` and uses the root npm scripts. Branding uses
 an inline copy of the canonical Ayni SVG and a favicon that follows the browser's
-light/dark preference. Mermaid diagrams use neutral/classic/ELK configuration;
-wide diagrams retain readable text and scroll instead of shrinking.
+light/dark preference. Mermaid diagrams use classic/ELK configuration and inherit
+the site’s light/dark theme (do not set a diagram-level `theme`). Wide diagrams
+retain readable text and scroll instead of shrinking.
 
 ELK 1 requires Mermaid 12. The scoped `vitepress-plugin-mermaid` npm override
 keeps the plugin on that same Mermaid instance while its declared peer range

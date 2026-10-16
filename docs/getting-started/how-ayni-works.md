@@ -5,7 +5,6 @@ Ayni separates quality policy from runtime provisioning, then joins them when a 
 ```mermaid
 ---
 config:
-  theme: neutral
   look: classic
   layout: elk
 ---
@@ -67,7 +66,6 @@ A managed environment is derived from:
 ```mermaid
 ---
 config:
-  theme: neutral
   look: classic
   layout: elk
 ---
