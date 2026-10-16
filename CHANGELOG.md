@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/ayni-oss/ayni/compare/ayni-v0.16.0...ayni-v0.16.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** refresh dependency locks for patch release ([#96](https://github.com/ayni-oss/ayni/issues/96)) ([2eead49](https://github.com/ayni-oss/ayni/commit/2eead493b8f549bdf172b1815a28231c89107e17))
+
 ## [0.16.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.15.0...ayni-v0.16.0) (2026-10-13)
 
 
