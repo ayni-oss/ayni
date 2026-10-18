@@ -63,6 +63,12 @@ Verification commands carry their originating contract and target, for example:
 `ayni verify test --config './.ayni.toml' --language node --root 'apps/web'
 --file 'src/example.test.ts' --name 'renders'`.
 
+Complexity ignores generated dependency and output directories (`node_modules`,
+`.git`, `.ayni`, `.svelte-kit`, `build`, `dist`, and `coverage`) at every depth.
+It does not inherit or weaken the configured complexity thresholds. ESLint's AST
+node type and source column form the function label, so distinct functions on the
+same line retain distinct finding identities and serialize independently.
+
 ## Impact planning
 
 `impact show` and `impact run` resolve the governing Node workspace, map changed

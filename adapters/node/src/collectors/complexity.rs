@@ -42,6 +42,8 @@ pub fn collect(context: &RunContext) -> CollectorResult {
             "--ext",
             ".ts,.tsx,.js,.jsx,.mjs,.cjs",
             "--no-error-on-unmatched-pattern",
+            "--ignore-pattern",
+            "**/{node_modules,.git,.ayni,.svelte-kit,build,dist,coverage}/**",
         ],
     )?;
     let stdout_text = String::from_utf8_lossy(&output.stdout);
@@ -108,11 +110,7 @@ pub fn collect(context: &RunContext) -> CollectorResult {
             offenders.push(ComplexityOffender {
                 file: file.clone(),
                 line: message.get("line").and_then(JsonValue::as_u64).unwrap_or(1),
-                function: message
-                    .get("nodeType")
-                    .and_then(JsonValue::as_str)
-                    .map(String::from)
-                    .unwrap_or_else(|| String::from("<function>")),
+                function: function_label(message),
                 cyclomatic: complexity_value,
                 cognitive: None,
                 level,
@@ -175,6 +173,20 @@ pub fn collect(context: &RunContext) -> CollectorResult {
         budget: Budget::Complexity(budget),
         offenders: Offenders::Complexity(offenders),
     })
+}
+
+fn function_label(message: &JsonValue) -> String {
+    let kind = message
+        .get("nodeType")
+        .and_then(JsonValue::as_str)
+        .unwrap_or("<function>");
+    message
+        .get("column")
+        .and_then(JsonValue::as_u64)
+        .map_or_else(
+            || kind.to_owned(),
+            |column| format!("{kind} at column {column}"),
+        )
 }
 
 fn classify_complexity(
@@ -248,3 +260,7 @@ mod tests {
         assert_eq!((warn_count, fail_count), (1, 1));
     }
 }
+
+#[cfg(test)]
+#[path = "complexity_tests.rs"]
+mod regression_tests;
