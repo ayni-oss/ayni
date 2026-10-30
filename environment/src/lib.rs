@@ -23,6 +23,7 @@ pub mod prebuilt;
 mod preparation;
 mod preparation_groups;
 mod runtime;
+pub mod staged;
 mod storage;
 
 pub use image::{ImagePlan, image_plan, signal_tool_coordinate};

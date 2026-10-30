@@ -64,7 +64,14 @@ impl SigningMaterial {
         }
     }
 
-    fn from_values(seed: &str, key_id: &str) -> Result<Self, BackendError> {
+    pub(crate) fn matches_trust(
+        &self,
+        trust: &ayni_core::EnvironmentCertificateTrustPolicy,
+    ) -> bool {
+        trust.trusts_key(&self.key_id, &self.key.verifying_key().to_bytes())
+    }
+
+    pub(crate) fn from_values(seed: &str, key_id: &str) -> Result<Self, BackendError> {
         validate_key_id(key_id)?;
         Ok(Self {
             key_id: key_id.into(),
@@ -258,7 +265,7 @@ pub(crate) fn manifest_from_inventory(
     Ok(render_manifest(&entries))
 }
 
-fn render_manifest(entries: &[ProtectedManifestEntry]) -> String {
+pub(crate) fn render_manifest(entries: &[ProtectedManifestEntry]) -> String {
     let mut manifest = serde_json::to_string(&ManifestHeader {
         schema_version: MANIFEST_SCHEMA_VERSION,
     })

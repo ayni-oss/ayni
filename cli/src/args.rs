@@ -1,6 +1,6 @@
 use crate::application::{
-    CheckOperation, ContractOperation, EnvLockOperation, EnvPruneOperation, EnvShowOperation,
-    EnvStorageOperation, ImpactOperation, InitOperation, Operation, OutputFormat,
+    CheckOperation, ContractOperation, EnvCertifyOperation, EnvLockOperation, EnvPruneOperation,
+    EnvShowOperation, EnvStorageOperation, ImpactOperation, InitOperation, Operation, OutputFormat,
     RepositoryOperation, ResultsCompareOperation, VerifyListOperation, VerifyOperation,
 };
 use ayni_core::{Language, SignalKind};
@@ -117,6 +117,8 @@ enum EnvCommands {
     Lock(EnvLockOptions),
     /// Build the repository code-environment image from a current lock.
     Build(EnvBuildOptions),
+    /// Certify a staged filesystem without running repository code or a container engine.
+    Certify(EnvCertifyOptions),
     /// Report Ayni-managed OCI images and repository-local environment state.
     Storage(EnvStorageOptions),
     /// Preview or remove stale repository state and explicitly selected images.
@@ -136,6 +138,7 @@ impl EnvCommands {
                 cache_from: options.cache_from,
                 cache_to: options.cache_to,
             }),
+            Self::Certify(options) => Operation::EnvCertify(options.into_operation()),
             Self::Storage(options) => Operation::EnvStorage(options.into_operation()),
             Self::Prune(options) => Operation::EnvPrune(options.into_operation()),
         }
@@ -341,6 +344,50 @@ struct EnvLockOptions {
     /// Exact provisioning base as `<reference>@sha256:<digest>`; defaults to pinned upstream Debian.
     #[arg(long)]
     base: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct EnvCertifyOptions {
+    /// Frozen repository whose committed policy and lock are validated without adapter discovery.
+    #[arg(long, default_value = ".")]
+    repo_root: PathBuf,
+    /// Read-only candidate filesystem, including `/` when running inside that candidate.
+    #[arg(long)]
+    filesystem_root: PathBuf,
+    /// Independently selected Linux platform; certification must run on this native platform.
+    #[arg(long, value_parser = ["linux/amd64", "linux/arm64"])]
+    platform: String,
+    /// Trusted expected Ayni executable identity as `sha256:<64 lowercase hex characters>`.
+    #[arg(long)]
+    expected_ayni_sha256: String,
+    /// Independently reviewed protected-content root from frozen unsigned-build evidence.
+    #[arg(long)]
+    expected_content_root: String,
+    /// Public certificate key identifier pinned by the committed trust policy.
+    #[arg(long)]
+    key_id: String,
+    /// Explicit regular file containing a 64-character lowercase hexadecimal Ed25519 seed.
+    /// Keep it outside frozen source and the staged filesystem. With `/`, use a separate mount outside protected paths.
+    #[arg(long)]
+    signing_key_file: PathBuf,
+    /// Destination metadata layer archive. A structured certification report is written to stdout.
+    #[arg(long)]
+    output: PathBuf,
+}
+
+impl EnvCertifyOptions {
+    fn into_operation(self) -> EnvCertifyOperation {
+        EnvCertifyOperation {
+            repo_root: self.repo_root,
+            filesystem_root: self.filesystem_root,
+            platform: self.platform,
+            expected_ayni_sha256: self.expected_ayni_sha256,
+            expected_content_root: self.expected_content_root,
+            key_id: self.key_id,
+            signing_key_file: self.signing_key_file,
+            output: self.output,
+        }
+    }
 }
 
 impl EnvLockOptions {
@@ -652,6 +699,28 @@ mod tests {
             (vec!["ayni", "env", "doctor"], "EnvDoctor"),
             (vec!["ayni", "env", "lock"], "EnvLock"),
             (vec!["ayni", "env", "build"], "EnvBuild"),
+            (
+                vec![
+                    "ayni",
+                    "env",
+                    "certify",
+                    "--filesystem-root",
+                    "/candidate",
+                    "--platform",
+                    "linux/arm64",
+                    "--expected-ayni-sha256",
+                    "sha256:abc",
+                    "--expected-content-root",
+                    "sha256:def",
+                    "--key-id",
+                    "builder",
+                    "--signing-key-file",
+                    "/signer/key",
+                    "--output",
+                    "/output/layer.tar",
+                ],
+                "EnvCertify",
+            ),
             (vec!["ayni", "env", "storage"], "EnvStorage"),
             (vec!["ayni", "env", "prune"], "EnvPrune"),
             (vec!["ayni", "contract", "show"], "ContractShow"),
@@ -686,6 +755,67 @@ mod tests {
             assert!(
                 format!("{operation:?}").starts_with(expected),
                 "{operation:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn filesystem_certification_requires_explicit_identity_key_file_and_output() {
+        let arguments = [
+            "ayni",
+            "env",
+            "certify",
+            "--repo-root",
+            "/source",
+            "--filesystem-root",
+            "/candidate",
+            "--platform",
+            "linux/arm64",
+            "--expected-ayni-sha256",
+            "sha256:abc",
+            "--expected-content-root",
+            "sha256:def",
+            "--key-id",
+            "builder",
+            "--signing-key-file",
+            "/signer/key",
+            "--output",
+            "/output/layer.tar",
+        ];
+        let operation = Cli::try_parse_from(arguments)
+            .expect("certification arguments")
+            .into_operation();
+        let Operation::EnvCertify(operation) = operation else {
+            panic!("certification operation")
+        };
+        assert_eq!(operation.repo_root, PathBuf::from("/source"));
+        assert_eq!(operation.filesystem_root, PathBuf::from("/candidate"));
+        assert_eq!(operation.platform, "linux/arm64");
+        assert_eq!(operation.expected_ayni_sha256, "sha256:abc");
+        assert_eq!(operation.expected_content_root, "sha256:def");
+        assert_eq!(operation.key_id, "builder");
+        assert_eq!(operation.signing_key_file, PathBuf::from("/signer/key"));
+        assert_eq!(operation.output, PathBuf::from("/output/layer.tar"));
+        for flag in [
+            "--filesystem-root",
+            "--platform",
+            "--expected-ayni-sha256",
+            "--expected-content-root",
+            "--key-id",
+            "--signing-key-file",
+            "--output",
+        ] {
+            let index = arguments
+                .iter()
+                .position(|value| *value == flag)
+                .expect("flag");
+            let incomplete = arguments
+                .iter()
+                .enumerate()
+                .filter_map(|(i, value)| (i != index && i != index + 1).then_some(*value));
+            assert!(
+                Cli::try_parse_from(incomplete).is_err(),
+                "{flag} must be explicit"
             );
         }
     }
