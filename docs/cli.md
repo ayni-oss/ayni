@@ -15,6 +15,7 @@ This document contains the help content for the `ayni` command-line program.
 * [`ayni env doctor`↴](#ayni-env-doctor)
 * [`ayni env lock`↴](#ayni-env-lock)
 * [`ayni env build`↴](#ayni-env-build)
+* [`ayni env certify`↴](#ayni-env-certify)
 * [`ayni env storage`↴](#ayni-env-storage)
 * [`ayni env prune`↴](#ayni-env-prune)
 * [`ayni tools`↴](#ayni-tools)
@@ -86,6 +87,7 @@ Inspect and manage the repository code environment
 * `doctor` — Diagnose missing, conflicting, unsupported, or stale environment state
 * `lock` — Resolve exact environment requirements into the committed lock
 * `build` — Build the repository code-environment image from a current lock
+* `certify` — Certify a staged filesystem without running repository code or a container engine
 * `storage` — Report Ayni-managed OCI images and repository-local environment state
 * `prune` — Preview or remove stale repository state and explicitly selected images
 
@@ -165,6 +167,30 @@ Build the repository code-environment image from a current lock
 * `--tag <TAG>` — Local tag applied to the built image. This does not publish it
 * `--cache-from <CACHE>` — Import an external Buildx cache; repeat for multiple sources. Does not change the lock
 * `--cache-to <CACHE>` — Export an external Buildx cache; repeat for multiple destinations. Does not change the lock
+
+
+
+## `ayni env certify`
+
+Certify a staged filesystem without running repository code or a container engine
+
+**Usage:** `ayni env certify [OPTIONS] --filesystem-root <FILESYSTEM_ROOT> --platform <PLATFORM> --expected-ayni-sha256 <EXPECTED_AYNI_SHA256> --expected-content-root <EXPECTED_CONTENT_ROOT> --key-id <KEY_ID> --signing-key-file <SIGNING_KEY_FILE> --output <OUTPUT>`
+
+###### **Options:**
+
+* `--repo-root <REPO_ROOT>` — Frozen repository whose committed policy and lock are validated without adapter discovery
+
+  Default value: `.`
+* `--filesystem-root <FILESYSTEM_ROOT>` — Read-only candidate filesystem, including `/` when running inside that candidate
+* `--platform <PLATFORM>` — Independently selected Linux platform; certification must run on this native platform
+
+  Possible values: `linux/amd64`, `linux/arm64`
+
+* `--expected-ayni-sha256 <EXPECTED_AYNI_SHA256>` — Trusted expected Ayni executable identity as `sha256:<64 lowercase hex characters>`
+* `--expected-content-root <EXPECTED_CONTENT_ROOT>` — Independently reviewed protected-content root from frozen unsigned-build evidence
+* `--key-id <KEY_ID>` — Public certificate key identifier pinned by the committed trust policy
+* `--signing-key-file <SIGNING_KEY_FILE>` — Explicit regular file containing a 64-character lowercase hexadecimal Ed25519 seed. Keep it outside frozen source and the staged filesystem. With `/`, use a separate mount outside protected paths
+* `--output <OUTPUT>` — Destination metadata layer archive. A structured certification report is written to stdout
 
 
 

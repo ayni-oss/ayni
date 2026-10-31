@@ -24,6 +24,7 @@ ayni-adapters-python = { path = "../adapters/python" }
 ayni-adapters-rust = { path = "../adapters/rust" }
 clap = { version = "4", features = ["derive"] }
 clap-markdown = "0.1"
+libc = "0.2"
 crossterm = "0.29"
 owo-colors = "4"
 ratatui = "0.30"
@@ -38,4 +39,5 @@ unicode-width = "0.2"
 
 [dev-dependencies]
 ed25519-dalek = { version = "2.2", default-features = false, features = ["std"] }
+tar = "0.4"
 tempfile = "3"

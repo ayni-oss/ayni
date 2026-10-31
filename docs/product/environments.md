@@ -124,6 +124,74 @@ The key identifier must use only ASCII letters, numbers, `.`, `-`, or `_`.
 variable is set, or the derived public key does not match the pinned key.
 Use neither variable for an unsigned build.
 
+## Certifying an existing filesystem offline
+
+`env certify` separates signing from image construction. It reads a frozen
+filesystem snapshot, checks the reviewed lock and public trust policy, and emits
+a signed metadata layer without running candidate programs, repository tools,
+an image engine, or network requests. This supports building on one machine and
+signing on another that has no build-engine access.
+
+Obtain the expected protected-content root from reviewed unsigned-build evidence
+and the expected Ayni executable digest from independently trusted executor
+evidence. Keep those expectations outside the builder's writable storage. Do not
+calculate new expectations from the candidate during certification: that would
+approve a changed candidate instead of rejecting it.
+
+```sh
+ayni env certify \
+  --repo-root /reviewed/source \
+  --filesystem-root /snapshots/candidate \
+  --platform linux/arm64 \
+  --expected-ayni-sha256 sha256:<reviewed-executable-digest> \
+  --expected-content-root sha256:<reviewed-protected-content-root> \
+  --key-id release-2026 \
+  --signing-key-file /private/environment.seed \
+  --output /artifacts/certification-layer.tar
+```
+
+The source must contain the committed policy, lock, and referenced input files.
+The explicit seed file must be a regular, non-symlink file containing 64 lowercase
+hexadecimal characters, optionally followed by one newline. Keep it outside the
+source and candidate filesystem. When inspecting `/` inside a container, keep
+the key and output outside all protected roots and `/etc/ayni`. The command does
+not read the build signing environment variables.
+
+The caller must safely acquire the candidate filesystem and keep it immutable
+and read-only throughout certification. Extraction and OCI-layer merging belong
+to the caller; `env certify` does not unpack untrusted archives. Linux and macOS
+are supported for inspection. This first implementation requires the selected
+Linux platform to match the certifier's CPU architecture and the lock's supported
+platforms. Neither a filename nor a candidate-provided version string establishes
+the expected executable identity.
+
+Protected reads use descriptor-relative traversal, reject escaping symlinks and
+special files, and check for changes during inspection. Limits are 256 MiB per
+regular file, 8 GiB of regular-file content, one million filesystem entries,
+128 directory levels, and the existing 64 MiB manifest limit. Source reads allow
+a 1 MiB lock, 512 KiB per other input, 256 files, and 8 MiB total. These checks supplement the immutable-snapshot requirement;
+they do not provide isolation from a concurrently writable filesystem.
+
+The output is an uncompressed tar layer containing only
+`etc/ayni/runtime.json` and `etc/ayni/protected-content.manifest`, each with root
+ownership and mode `0444`. Standard output is a JSON report containing its
+SHA-256 layer digest and DiffID, certificate and content identities, selected
+platform, public trust fingerprint, and image labels. It contains no signing
+seed. Publish the layer without executing candidate image configuration, such
+as `ONBUILD` instructions. Preserve existing candidate layers and configuration,
+append the reported DiffID and layer descriptor, and apply the reported labels.
+
+Output publication is atomic and never replaces a different existing file.
+Repeating the same request against an unchanged snapshot returns the same layer
+and report; a conflicting output fails. After interruption, retry with the same
+reviewed inputs. A temporary file alone is not a completed certification artifact.
+
+The caller must bind the final immutable image digest to this evidence and
+independently verify the actual published filesystem and runtime permissions.
+Certification signs reviewed protected bytes and their lock association. It does
+not establish OCI publication, launcher isolation, passing source checks, or
+fresh managed-execution compatibility.
+
 ## Launching an image
 
 The image defaults to `/bin/sh`. A platform attaches the checkout at its chosen

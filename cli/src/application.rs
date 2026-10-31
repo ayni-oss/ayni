@@ -17,6 +17,7 @@ pub(crate) enum Operation {
     EnvDoctor(RepositoryOperation),
     EnvLock(EnvLockOperation),
     EnvBuild(EnvBuildOperation),
+    EnvCertify(EnvCertifyOperation),
     EnvStorage(EnvStorageOperation),
     EnvPrune(EnvPruneOperation),
     ContractShow(ContractOperation),
@@ -132,4 +133,16 @@ pub(crate) struct EnvBuildOperation {
     pub tag: Option<String>,
     pub cache_from: Vec<String>,
     pub cache_to: Vec<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct EnvCertifyOperation {
+    pub repo_root: PathBuf,
+    pub filesystem_root: PathBuf,
+    pub platform: String,
+    pub expected_ayni_sha256: String,
+    pub expected_content_root: String,
+    pub key_id: String,
+    pub signing_key_file: PathBuf,
+    pub output: PathBuf,
 }

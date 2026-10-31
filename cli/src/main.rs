@@ -11,6 +11,7 @@ mod contract;
 mod discovery;
 mod environment;
 mod environment_backend;
+mod environment_certify;
 mod environment_lock;
 mod host_prerequisites;
 mod impact;
@@ -40,6 +41,7 @@ fn dispatch(operation: application::Operation) -> ExitCode {
         Operation::ValidateSeeds => validate_seeds(),
         Operation::PreparedExec(command) => prebuilt_runtime::exec_prepared(command),
         Operation::Init(operation) => init::run(operation, &build_registry()),
+        Operation::EnvCertify(operation) => environment_certify::run(operation),
         operation @ (Operation::Check(_) | Operation::Verify(_) | Operation::ImpactRun(_)) => {
             dispatch_analysis(operation)
         }
