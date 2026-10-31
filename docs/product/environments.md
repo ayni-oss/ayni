@@ -9,6 +9,10 @@ missing tools produce setup guidance. In an Ayni image, `/etc/ayni/runtime.json`
 is verified against the attached checkout's lock and protected tool inventory
 before locked tool activation is applied.
 
+Docker and Podman image identities are retained as canonical `sha256:` digests.
+Podman's bare SHA-256 inspection output is normalized before checking a newly
+built image, restoring a prior tag, or validating a retained build record.
+
 ## Reusing an environment in CI
 
 The [managed-check action](https://github.com/ayni-oss/ayni/tree/main/.github/actions/managed-check)

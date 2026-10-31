@@ -212,10 +212,39 @@ pub(crate) fn inspect(
         &["image".into(), "inspect".into(), image.into()],
     )?;
     let values: Vec<serde_json::Value> = serde_json::from_slice(&output).map_err(rebuild)?;
-    values
+    let metadata = values
         .into_iter()
         .next()
-        .ok_or_else(|| rebuild("image inspection returned no metadata"))
+        .ok_or_else(|| rebuild("image inspection returned no metadata"))?;
+    normalize_inspection_metadata(engine, metadata)
+}
+
+fn normalize_inspection_metadata(
+    engine: Engine,
+    mut metadata: serde_json::Value,
+) -> Result<serde_json::Value, BackendError> {
+    let image_id = metadata["Id"]
+        .as_str()
+        .ok_or_else(|| rebuild("image inspection returned no immutable image ID"))?;
+    metadata["Id"] = canonical_image_id(engine, image_id)?.into();
+    Ok(metadata)
+}
+
+/// Podman JSON and template output may omit the SHA-256 algorithm prefix, while
+/// its iidfile uses the prefixed form. Retained identities always use one form.
+pub(crate) fn canonical_image_id(engine: Engine, value: &str) -> Result<String, BackendError> {
+    if valid_digest(value) {
+        return Ok(value.into());
+    }
+    if engine == Engine::Podman {
+        let prefixed = format!("sha256:{value}");
+        if valid_digest(&prefixed) {
+            return Ok(prefixed);
+        }
+    }
+    Err(rebuild(
+        "image inspection returned an invalid immutable image ID",
+    ))
 }
 
 pub(crate) fn executable_digest(
@@ -468,6 +497,50 @@ pub(crate) fn validate_substrate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn podman_inspection_and_iidfile_identities_compare_canonically() {
+        let bare = "a".repeat(64);
+        let canonical = format!("sha256:{bare}");
+        for input in [&bare, &canonical] {
+            let metadata = normalize_inspection_metadata(
+                Engine::Podman,
+                serde_json::json!({"Id": input, "Config": {"Labels": {"fixture": "retained"}}}),
+            )
+            .expect("valid Podman identity");
+            assert_eq!(metadata["Id"], canonical);
+            assert_eq!(metadata["Config"]["Labels"]["fixture"], "retained");
+            assert_eq!(
+                canonical_image_id(Engine::Podman, input).unwrap(),
+                canonical
+            );
+        }
+        assert!(canonical_image_id(Engine::Docker, &bare).is_err());
+        assert_eq!(
+            canonical_image_id(Engine::Docker, &canonical).unwrap(),
+            canonical
+        );
+    }
+
+    #[test]
+    fn inspection_identity_normalization_rejects_nonimmutable_values() {
+        for invalid in [
+            "latest".into(),
+            "a".repeat(12),
+            "A".repeat(64),
+            format!("sha512:{}", "a".repeat(64)),
+            format!("sha256:{}\n", "a".repeat(64)),
+        ] {
+            assert!(canonical_image_id(Engine::Podman, &invalid).is_err());
+        }
+        for metadata in [
+            serde_json::json!({}),
+            serde_json::json!({"Id": 123}),
+            serde_json::json!({"Id": "latest"}),
+        ] {
+            assert!(normalize_inspection_metadata(Engine::Podman, metadata).is_err());
+        }
+    }
 
     fn identity() -> ExecutorIdentity {
         ExecutorIdentity {

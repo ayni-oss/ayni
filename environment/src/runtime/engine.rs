@@ -458,12 +458,10 @@ fn tagged_image_id(root: &Path, engine: Engine, tag: &str) -> Result<Option<Stri
     if !output.status.success() {
         return Ok(None);
     }
-    let image_id = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if !crate::executor::valid_digest(&image_id) {
-        return Err(BackendError::environment(
-            "environment image tag resolved to an invalid immutable image ID",
-        ));
-    }
+    let image_id = crate::executor::canonical_image_id(
+        engine,
+        String::from_utf8_lossy(&output.stdout).trim(),
+    )?;
     Ok(Some(image_id))
 }
 
