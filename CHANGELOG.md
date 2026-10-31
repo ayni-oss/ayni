@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.16.2...ayni-v0.17.0) (2026-10-31)
+
+
+### Features
+
+* **environment:** certify frozen runtime filesystems offline ([#109](https://github.com/ayni-oss/ayni/issues/109)) ([3da6bc7](https://github.com/ayni-oss/ayni/commit/3da6bc79132d0b6bdbe240ea6c5772c01c2bed87))
+
+
+### Bug Fixes
+
+* **node:** preserve inline complexity findings and ignore generated output ([#102](https://github.com/ayni-oss/ayni/issues/102)) ([5658847](https://github.com/ayni-oss/ayni/commit/565884751ca53848155a3a8605e26615f4369222))
+
 ## [0.16.2](https://github.com/ayni-oss/ayni/compare/ayni-v0.16.1...ayni-v0.16.2) (2026-10-16)
 
 
