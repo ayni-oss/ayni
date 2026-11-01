@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/ayni-oss/ayni/compare/ayni-v0.17.0...ayni-v0.17.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **environment:** normalize Podman immutable image identities ([#111](https://github.com/ayni-oss/ayni/issues/111)) ([2afbc16](https://github.com/ayni-oss/ayni/commit/2afbc164dc521d5eef84d89c5d4a4bb7276345b7))
+
 ## [0.17.0](https://github.com/ayni-oss/ayni/compare/ayni-v0.16.2...ayni-v0.17.0) (2026-10-31)
 
 
