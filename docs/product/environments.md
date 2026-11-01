@@ -13,6 +13,20 @@ Docker and Podman image identities are retained as canonical `sha256:` digests.
 Podman's bare SHA-256 inspection output is normalized before checking a newly
 built image, restoring a prior tag, or validating a retained build record.
 
+## Versions and development container formats
+
+A lock records exact language/runtime, package-manager and signal-tool versions.
+Current resolution preserves project version authority where documented; it
+does not universally enforce a qualified combination catalog. The
+[compatibility policy](compatibility.md) describes current guarantees and the
+planned admission boundary.
+
+Ayni packages environments as Open Container Initiative (OCI) development images.
+The open [Development Container specification](https://containers.dev/overview.html)
+adds development metadata to container environments. Ayni does not currently
+generate `devcontainer.json` or claim Dev Container integration. Such integration
+is future work and must preserve Ayni lock and evidence semantics.
+
 ## Reusing an environment in CI
 
 The [managed-check action](https://github.com/ayni-oss/ayni/tree/main/.github/actions/managed-check)

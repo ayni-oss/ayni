@@ -37,6 +37,18 @@ metadata. Plugin aliases require manual inspection. Rust and Go inspection
 reports isolated tool requirements without claiming they are installed on the
 host. See each [adapter guide](/adapters/rust) for supported project shapes.
 
+## Qualification and native configuration
+
+The [compatibility policy](../product/compatibility.md) distinguishes current
+version authority from planned exact-combination enforcement. A successful
+inspection confirms declarations and resolutions, not fresh tool execution or
+managed environment qualification.
+
+Projects own native configuration. Reconciliation reports prerequisites and
+conflicts without rewriting test, lint or build settings. Custom overrides
+exclude default tools from inspection; they do not inherit qualification of
+the replaced integration.
+
 ## Result contract
 
 JSON projection `0.2.0` contains normalized targets, governing roots, tool

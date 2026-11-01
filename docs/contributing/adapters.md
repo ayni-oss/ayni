@@ -432,6 +432,22 @@ Before merging an adapter:
     cargo check --workspace --all-features
     ```
 
+### Runtime and tool qualification
+
+Follow the [compatibility policy](../product/compatibility.md) when documenting
+versions or adding integrations. Keep current selection rules separate from
+planned catalog admission. Native configuration remains project-owned.
+
+A qualified combination needs exact runtime/compiler, package-manager, tool and
+platform identities, plus documented project configuration. Inventory assertions
+and captured parser reports are partial evidence. Exercise real collection and
+managed preparation before advertising managed support. Record evidence for
+provider alternatives separately; custom commands do not inherit it.
+
+For upgrades, update the adapter inventory, native fixture declarations, affected
+reports and compatibility documentation together. Retiring support must name
+the ending release and replacement before removing its tests and code.
+
 ### Baseline inventory
 
 Expose `managed_tool_specs()` with an adapter-local `tooling.rs` inventory.

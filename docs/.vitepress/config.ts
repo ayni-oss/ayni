@@ -32,6 +32,7 @@ export default withMermaid(defineConfig({
           { text: 'How Ayni Works', link: '/getting-started/how-ayni-works' },
           { text: 'Managed Environments', link: '/product/environments' },
           { text: 'Security and Trust', link: '/product/security' },
+          { text: 'Runtime and Tool Compatibility', link: '/product/compatibility' },
           { text: 'Signals', link: '/product/signals' },
           { text: 'Adapter Capabilities', link: '/product/capabilities' },
           { text: 'Verification', link: '/product/runtime' },
@@ -66,6 +67,7 @@ export default withMermaid(defineConfig({
         items: [
           { text: 'Managed Environments', link: '/product/environments' },
           { text: 'Security and Trust', link: '/product/security' },
+          { text: 'Runtime and Tool Compatibility', link: '/product/compatibility' },
           { text: 'Signals', link: '/product/signals' },
           { text: 'Runtime and Verification', link: '/product/runtime' },
           { text: 'Impact Analysis', link: '/product/impact' },

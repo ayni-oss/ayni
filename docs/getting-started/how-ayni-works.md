@@ -1,6 +1,8 @@
 # How Ayni works
 
-Ayni separates quality policy from runtime provisioning, then joins them when a signal is executed.
+Ayni measures repository code against an explicit quality contract. It integrates
+language tools and can package their locked versions into a development image.
+These responsibilities meet when a signal executes.
 
 ```mermaid
 ---
@@ -20,6 +22,20 @@ That separation gives reviewers three explicit questions instead of one opaque s
 2. Which exact tools and dependencies produce those measurements?
 3. Which scope should be measured for this feedback cycle?
 
+## Product responsibilities
+
+| Responsibility | What Ayni provides |
+| --- | --- |
+| Signals | Normalized measurements and actionable findings |
+| Tool compatibility | Adapter integrations and version inventories, with an exact-combination qualification policy planned |
+| Quality contracts | Repository-owned measurements, thresholds and completion requirements |
+| Managed environments | Locked runtimes, tools and prepared dependencies in an OCI development image |
+| Evidence | Results tied to policy, source and recorded execution context |
+
+These are product responsibilities, not implementation crate layers.
+[Runtime and tool compatibility](/product/compatibility) explains the difference
+between locking exact versions and qualifying them together.
+
 ## The quality contract: what is healthy?
 
 `.ayni.toml` is repository policy. It defines:
@@ -29,8 +45,10 @@ That separation gives reviewers three explicit questions instead of one opaque s
 - warning and failure thresholds;
 - structural dependency rules;
 - concurrency and report controls;
-- optional tool-command overrides; and
-- optional runtime capabilities such as network or Docker-socket access.
+- optional tool-command overrides.
+
+Native tool configuration remains project-owned. Platforms own container launch
+policy, network access, Docker sockets and resource limits.
 
 The contract is deterministic and versioned with the code. `ayni contract show` validates its shape while rendering the effective policy.
 
@@ -97,7 +115,7 @@ A reproducible Ayni setup has several versioned inputs:
 
 | Input | Purpose | Commit it? |
 | --- | --- | --- |
-| `.ayni.toml` | Quality and runtime policy | Yes |
+| `.ayni.toml` | Quality policy and environment inputs | Yes |
 | `.ayni.lock` | Exact managed environment resolution | Yes |
 | Native tool metadata | Toolchain selectors such as `rust-toolchain.toml`, `packageManager`, or Gradle JVM configuration | Yes |
 | Native dependency locks | Exact project dependencies | Yes |
@@ -108,8 +126,9 @@ The CLI installation itself is machine-level tooling. Installing or upgrading `a
 
 ## The normal lifecycle
 
-The build step requires the
-[environment certificate signing variables](/product/environments#build-and-dependency-preparation).
+The build step supports unsigned metadata. Configure both
+[environment certificate signing variables](/product/environments#signing-an-environment-image)
+when a repository-pinned signing identity is required.
 
 ```sh
 # Policy work
@@ -128,7 +147,10 @@ ayni impact run --base origin/main
 ayni check
 ```
 
-The result is one quality contract, reproducible execution for humans and agents, focused feedback while code changes, and one definitive full gate before integration.
+The full check evaluates completion against the repository contract. Tests and
+external inputs can vary even when policy evaluation is deterministic.
+Environment verification, passing quality and authenticated evidence remain
+separate claims; see the [security model](/product/security).
 
 ## Next steps
 

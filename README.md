@@ -11,9 +11,10 @@ Maintainers commit policy, Ayni runs repository tools in the current workspace,
 and agents receive scoped, actionable evidence. Ayni can also build a portable
 development image containing the repository's locked tools.
 
-Ayni is intentionally forge-neutral and deterministic. It does not generate
-probabilistic review commentary; it normalizes real repository-tool outcomes
-into evidence that humans and AI agents can reproduce.
+Ayni is forge-neutral and evaluates normalized tool outcomes against explicit
+policy. Tests and external inputs can still vary between runs. Locked versions
+make those inputs reviewable; the [compatibility policy](docs/product/compatibility.md)
+distinguishes exact resolution from qualified runtime and tool combinations.
 
 **Documentation:** [Installation](docs/getting-started/installation.md) ·
 [Quickstart](docs/getting-started/quickstart.md) ·
@@ -41,6 +42,18 @@ repair targets.
 - runs language-specific tooling through adapters in the current execution environment
 - writes machine-readable artifacts under `.ayni/`
 - prints terminal or Markdown reports for local workflows and AI repair loops
+
+## Product responsibilities
+
+Ayni collects signals, integrates language tools, evaluates repository contracts,
+and builds locked development environments. Its evidence records what completed
+and how it ran. Environment certification and passing quality checks make
+separate claims; see the [security model](docs/product/security.md).
+
+The planned compatibility catalog will qualify exact language/runtime,
+package-manager and signal-tool combinations. Universal enforcement is not
+implemented. Lint and security signal families remain future work; the current
+vocabulary is listed above.
 
 ## Install
 
@@ -247,6 +260,7 @@ For layer boundaries and change rules, see [ARCHITECTURE.md](ARCHITECTURE.md).
 - [CLI reference](docs/cli.md)
 - [Configuration reference](docs/product/config.md)
 - [Managed environments](docs/product/environments.md)
+- [Runtime and tool compatibility](docs/product/compatibility.md)
 - [Security and trust model](docs/product/security.md) and [vulnerability reporting policy](SECURITY.md)
 - [Signal contract index](docs/product/signals.md) and [current schema v4](docs/product/signals/v4.md)
 - [Adapter capability tiers](docs/product/capabilities.md)

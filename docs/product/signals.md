@@ -24,6 +24,17 @@ image with an attached checkout. `ayni check`, `ayni verify <signal>`, and
 See [How Ayni works](/getting-started/how-ayni-works) for the complete mental
 model and [Managed environments](/product/environments) for provisioning.
 
+## Measurement and repeatability
+
+Ayni applies deterministic normalization and policy rules to the collected
+outcomes. Tests, external services and mutable scanner databases can still
+change those outcomes. Exact tool versions help explain a run; they do not
+guarantee identical results.
+
+Lint and security are planned signal families. They require explicit measurement
+semantics, tool qualification and typed contracts before joining the vocabulary.
+Current output remains the six signal kinds below.
+
 ## Canonical vocabulary
 
 All schema versions document rows from this closed vocabulary. New adapters

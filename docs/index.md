@@ -50,17 +50,24 @@ flowchart TD
 
 Ayni keeps these responsibilities separate and reviewable:
 
-1. **Define policy.** `.ayni.toml` selects languages, signals, thresholds, structural rules, and optional runtime capabilities.
+1. **Define policy.** `.ayni.toml` selects languages, signals, thresholds, structural rules, and environment inputs.
 2. **Lock execution.** `.ayni.lock` records exact tools, native dependency inputs, preparation state, and an immutable base image.
 3. **Measure code.** `check`, `verify`, and `impact run` measure the current workspace and produce normalized evidence.
 
 Installing the CLI is separate from provisioning a repository environment. Ayni never silently creates a lock or rebuilds an image during a quality run.
 
+Exact versions make environment inputs reviewable. The
+[compatibility policy](/product/compatibility) distinguishes current version
+resolution from the planned catalog of qualified combinations.
+[Environment verification and quality results](/product/security) make separate
+claims about the environment and measured source.
+
 ## Start with a reviewable proposal
 
-After [installing Ayni](/getting-started/installation), configure the
-[environment certificate signing variables](/product/environments#build-and-dependency-preparation)
-used by `env build`:
+After [installing Ayni](/getting-started/installation), preview the policy and
+build the environment. Unsigned builds are supported; configure both
+[signing variables](/product/environments#signing-an-environment-image) when a
+repository-pinned signing identity is required:
 
 ```sh
 ayni init --dry-run
