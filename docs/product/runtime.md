@@ -15,5 +15,10 @@ caches into that checkout without replacing source, refreshing native locks, or
 silently deleting existing dependencies. Native development commands continue
 to work from their project roots.
 
+Host collection does not enforce managed tool versions. Verified runtime
+metadata establishes the locked environment association, not universal
+qualification of its tool combination. See the
+[compatibility policy](compatibility.md) for current and planned guarantees.
+
 `ayni env doctor` diagnoses the lock and current image state. It does not
 prepare dependencies or run quality work.

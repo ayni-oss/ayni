@@ -39,6 +39,19 @@ resolutions. [Version selection](../contributing/tooling-reconciliation.md#versi
 explains how project versions and adapter baselines are used. Custom command
 overrides exclude their default tools from inspection.
 
+## Compatibility evidence
+
+Rust and Cargo follow the resolved toolchain; isolated signal tools use exact
+adapter pins. The version table records those pins, not qualification of every
+Rust version with them.
+
+See the [compatibility policy](../product/compatibility.md) for current limits
+and planned exact-combination admission, and the
+[baseline fixtures](../contributing/tooling-baseline-fixtures.md) for evidence
+boundaries. Host collection does not enforce the managed version contract.
+Native configuration remains project-owned; overrides do not inherit the
+default integration's qualification.
+
 ## Focused verification
 
 Shared artifact, completion, validation, and exact-command reuse semantics are

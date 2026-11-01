@@ -2,6 +2,18 @@
 
 Ayni is an open-source, multi-language signal tool with strict layer boundaries.
 
+## Product responsibilities
+
+Signals, compatibility, quality contracts, managed environments and evidence are
+product responsibilities. They are separate from the crate layers below. Core
+owns their typed contracts; adapters own language/runtime and tool integration;
+the environment backend consumes validated plans and locks.
+
+The [compatibility policy](docs/product/compatibility.md) defines the planned
+qualification boundary. Current exact lock resolution does not imply universal
+enforcement of supported combinations. Native tool configuration remains
+project-owned; platform launch and isolation remain caller responsibilities.
+
 ## Dependency Flow
 
 ```text

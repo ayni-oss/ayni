@@ -1,7 +1,7 @@
 # Tool baseline compatibility fixtures
 
-Milestone 2 adds real execution evidence for the baseline gaps. These small
-fixtures are adapter tests, not additional supported managed environments.
+These fixtures record real execution evidence for selected adapter baselines.
+They are adapter tests, not additional supported managed environments.
 Run them from a temporary copy: mutation tools and Gradle write local state.
 The ordinary Rust test suite consumes the captured reports without downloading
 or invoking these tools.
@@ -15,14 +15,24 @@ The mutmut baseline deliberately stays on the 2.x command/report contract:
 Ayni calls `run`, then `junitxml --suspicious-policy=failure
 --untested-policy=failure`. The [2.5.1 documentation](https://pypi.org/project/mutmut/2.5.1/)
 describes that JUnit interface. Upgrading to another report contract requires a
-collector change and new execution evidence. These fixtures establish support
-on the listed runtimes, not every possible Python/JDK version.
+collector change and new execution evidence. These fixtures establish the listed
+fixture behavior, not every possible Python/JDK version or a complete
+exact-version managed combination.
 
 The Kotlin fixture selects `CounterTest` explicitly for PIT. A successful Gradle
 process alone is insufficient: assert that mutants were evaluated and killed.
 JaCoCo's version is a `toolVersion` on its bundled Gradle plugin, not the version
 of an external plugin declaration. JaCoCo 0.8.12's supported Java versions are
 recorded in its [release history](https://www.jacoco.org/jacoco/trunk/doc/changes.html).
+
+## Evidence boundaries
+
+The [compatibility policy](../product/compatibility.md#qualification-evidence)
+defines the qualification levels. Captured reports test parsers; native version
+assertions test inventory consistency; real commands test fixture execution.
+Managed qualification additionally needs the exact image, runtime, package
+manager, platform, project inputs and complete collection evidence. The runtime
+selectors in the table do not record all of those exact identities.
 
 ## Python reproduction
 
@@ -72,11 +82,14 @@ example. Conformance tests fail if these fixture declarations drift from the
 adapter inventory. Existing collector fixtures exercise their report parsers.
 The repository's checkout complexity gate exercises rust-code-analysis-cli
 0.0.25; Rust and Go environment tests assert isolated provisioning requirements.
-This milestone does not claim fresh managed-image execution for all five mono
-examples; that remains part of the final reconciliation rollout.
+This evidence does not establish fresh managed-image execution for all five mono
+examples. That qualification remains separate from parser and inventory tests.
 
 When changing a baseline, update the owning adapter inventory, its native
 fixture declarations, and any captured reports affected by the tool's output.
 Run the relevant checkout `verify`, then the repository completion gates.
+Before advertising a qualified combination, also record fresh managed execution
+for its exact versions, project shape and platform. Changing a fixture pin alone
+does not qualify an upgrade.
 Do not silently replace a baseline with a latest-version selector or install
 signal tools globally.

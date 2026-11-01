@@ -38,6 +38,19 @@ resolutions. [Version selection](../contributing/tooling-reconciliation.md#versi
 explains how project versions and adapter baselines are used. Custom command
 overrides exclude their default tools from inspection.
 
+## Compatibility evidence
+
+Node and npm/pnpm versions resolve from native requirements; project tools
+retain native lock resolutions. Baseline fixtures record selected tool versions,
+not qualification of every Node/package-manager/tool combination.
+
+See the [compatibility policy](../product/compatibility.md) for current limits
+and planned exact-combination admission, and the
+[baseline fixtures](../contributing/tooling-baseline-fixtures.md) for evidence
+boundaries. Host collection does not enforce the managed version contract.
+Native configuration remains project-owned; overrides do not inherit the
+default integration's qualification.
+
 ## Focused verification
 
 Shared artifact, completion, validation, and exact-command reuse semantics are

@@ -20,6 +20,13 @@ Ayni does not imply identical measurement depth merely because an adapter can de
 
 “Supported” applies only to the project shapes documented in each adapter guide. Unsupported package managers, missing native locks, ambiguous workspaces, and unavailable signal tools fail explicitly.
 
+## Version qualification
+
+A supported signal requires the documented project shape and tool integration.
+It does not imply support for every runtime or tool version. Exact managed
+resolution and the planned qualified-combination catalog have different
+guarantees; see [Runtime and tool compatibility](compatibility.md).
+
 ## Product rule
 
 Ayni prioritizes truthful evidence over a visually complete matrix. A signal is advertised only when it answers the canonical signal question with real, parsed measurement. New languages and broader project shapes are deferred until existing supported capabilities remain reproducible and semantically honest.

@@ -8,6 +8,11 @@ Use `ayni contract show` to inspect the effective quality contract and `ayni
 env show` to inspect the environment plan. Run `ayni env lock` intentionally
 after changing environment inputs; neither `check` nor `env build` updates it.
 
+Native test, build and analysis configuration remains project-owned. Ayni
+inspects the prerequisites documented by each adapter; `tools reconcile` does
+not edit them. See [Runtime and tool compatibility](compatibility.md) for the
+planned exact-combination support policy and current enforcement limits.
+
 ## Quality commands
 
 `ayni check` evaluates every configured target. `ayni verify <signal>` runs a

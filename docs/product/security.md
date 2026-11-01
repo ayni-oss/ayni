@@ -10,6 +10,19 @@ CI systems and development platforms own sandboxing, network policy, resource
 limits, credentials, checkout mounting, and container launch settings. Apply
 those controls at the runner or platform boundary.
 
+## Claims and their evidence
+
+| Claim | Evidence and boundary |
+| --- | --- |
+| Environment verification | Lock association and protected-content checks identify the environment. Unsigned metadata establishes local consistency. |
+| Quality-contract satisfaction | Complete signal evidence meets the configured policy for the measured source and recorded execution context. |
+| Authenticated statement | A valid signature identifies a signing key. The consumer must trust that key, the statement and the execution boundary. |
+
+A verified environment can produce failing quality results. Passing quality
+results do not establish environment provenance or independently trusted
+execution. The [compatibility policy](compatibility.md) separately explains why
+exact versions alone do not qualify a runtime and tool combination.
+
 ## Development images
 
 `ayni env build` constructs a source-independent image from an explicit lock.
